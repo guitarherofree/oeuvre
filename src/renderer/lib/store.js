@@ -19,7 +19,12 @@ export const toasts = signal([]);
 export const exportState = signal(null);
 export const updateStatus = signal(null);
 export const sourcesMenuOpen = signal(false);
-export const portfolioDescending = signal(config.portfolio.sortDescending);
+// Portfolio and Project: simple lists of pieces that differ only in their export format.
+export const LISTS = {
+  portfolio: { name: 'portfolio', label: 'Portfolio', format: 'mp3', noun: 'work sample' },
+  project: { name: 'project', label: 'Project', format: 'wav', noun: 'piece' },
+};
+export const listDescending = signal({ portfolio: config.portfolio.sortDescending, project: config.project.sortDescending });
 export const dragging = signal(null); // { ids, from }
 
 const back = signal([]);
@@ -33,7 +38,10 @@ export const piecesById = computed(() => new Map(library.value.pieces.map((p) =>
 export const sourcesById = computed(() => new Map(library.value.sources.map((s) => [s.id, s])));
 export const visibleSourceIds = computed(() => new Set(library.value.sources.filter((s) => s.visible && !s.missing).map((s) => s.id)));
 export const libraryPieces = computed(() => sortByTitle(library.value.pieces.filter((p) => visibleSourceIds.value.has(p.sourceId)), config.library.sortDescending));
-export const portfolioIds = computed(() => new Set(collections.value.portfolio.map((e) => e.pieceId)));
+export const listIds = computed(() => Object.fromEntries(
+  Object.keys(LISTS).map((name) => [name, new Set((collections.value[name] || []).map((e) => e.pieceId))]),
+));
+export const portfolioIds = computed(() => listIds.value.portfolio);
 export const setlistsById = computed(() => new Map(collections.value.setlists.map((s) => [s.id, s])));
 
 export function isAvailable(id) {
@@ -121,7 +129,7 @@ export function saveUi() {
   clearTimeout(uiTimer);
   uiTimer = setTimeout(() => {
     const r = route.value.view === 'score' ? { view: 'oeuvre' } : route.value;
-    invoke('state:save', { ui: { route: r, queueOpen: queueOpen.value, portfolioDescending: portfolioDescending.value } });
+    invoke('state:save', { ui: { route: r, queueOpen: queueOpen.value, listDescending: listDescending.value } });
   }, 300);
 }
 

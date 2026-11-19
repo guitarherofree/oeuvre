@@ -1,5 +1,6 @@
-// Portfolio export: individual MP3 files into a folder, or one ZIP of MP3s.
-// Pieces that aren't MP3 are converted with the bundled FFmpeg (LAME encoder).
+// Export for Portfolio (MP3) and Project (WAV): individual files into a folder,
+// or one ZIP. Pieces already in the target format are copied byte-for-byte;
+// anything else is converted with the bundled FFmpeg.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -17,9 +18,9 @@ export function safeFileName(title) {
   return cleaned || 'Untitled';
 }
 
-function uniqueName(base, taken) {
-  let name = `${base}.mp3`;
-  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n}).mp3`;
+function uniqueName(base, taken, ext = 'mp3') {
+  let name = `${base}.${ext}`;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n}).${ext}`;
   taken.add(name.toLowerCase());
   return name;
 }
@@ -32,6 +33,49 @@ function targetSampleRate(rate) {
 function parseTime(s) {
   const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(s);
   return m ? (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) : null;
+}
+
+/** PCM codec for a WAV export: lossless sources keep their bit depth; lossy ones use `lossyBits`. */
+export function wavCodecFor(piece, lossyBits = 24) {
+  const bits = piece.lossless && piece.bitsPerSample ? piece.bitsPerSample : lossyBits;
+  if (bits <= 16) return 'pcm_s16le';
+  if (bits <= 24) return 'pcm_s24le';
+  return 'pcm_s32le';
+}
+
+function runFfmpeg(ffmpeg, args, { duration, signal, onFraction }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let tail = '';
+    const onAbort = () => child.kill('SIGKILL');
+    signal?.addEventListener('abort', onAbort, { once: true });
+    child.stderr.on('data', (chunk) => {
+      const s = chunk.toString();
+      tail = (tail + s).slice(-4000);
+      const t = parseTime(s);
+      if (t !== null && duration > 0) onFraction?.(Math.min(1, t / duration));
+    });
+    child.on('error', (err) => { signal?.removeEventListener('abort', onAbort); reject(err); });
+    child.on('close', (code) => {
+      signal?.removeEventListener('abort', onAbort);
+      if (signal?.aborted) return reject(Object.assign(new Error('Export cancelled'), { cancelled: true }));
+      if (code === 0) return resolve();
+      reject(new Error(tail.trim().split('\n').filter(Boolean).pop() || `ffmpeg exited with code ${code}`));
+    });
+  });
+}
+
+export async function transcodeToWav({ ffmpeg, piece, out, title, lossyBits = 24, signal, onFraction }) {
+  const args = ['-hide_banner', '-nostdin', '-y', '-i', piece.path, '-map', '0:a:0', '-c:a', wavCodecFor(piece, lossyBits),
+    '-map_metadata', '0', '-rf64', 'auto'];
+  if (title) args.push('-metadata', `title=${title}`);
+  args.push('-f', 'wav', out);
+  try {
+    await runFfmpeg(ffmpeg, args, { duration: piece.duration, signal, onFraction });
+  } catch (err) {
+    await fsp.rm(out, { force: true });
+    throw err;
+  }
 }
 
 export function transcodeToMp3({ ffmpeg, src, out, bitrate, sampleRate, title, duration, withArt = true, signal, onFraction }) {
@@ -73,13 +117,15 @@ export function transcodeToMp3({ ffmpeg, src, out, bitrate, sampleRate, title, d
 
 /**
  * @param {object} o
- * @param {Array<{id,title,path,ext,sampleRate,duration}>} o.pieces
+ * @param {Array<{id,title,path,ext,sampleRate,bitsPerSample,lossless,duration}>} o.pieces
  * @param {'folder'|'zip'} o.mode
+ * @param {'mp3'|'wav'} [o.format]
  * @param {string} o.dest      folder (mode=folder) or .zip file path (mode=zip)
  * @param {string} o.ffmpeg    path to ffmpeg binary
- * @param {number} o.bitrate   kbps
+ * @param {number} o.bitrate   MP3 kbps
+ * @param {number} [o.wavLossyBits] bit depth for WAVs decoded from MP3/AAC
  */
-export async function exportPieces({ pieces, mode, dest, ffmpeg, bitrate, onProgress, signal }) {
+export async function exportPieces({ pieces, mode, format = 'mp3', dest, ffmpeg, bitrate, wavLossyBits = 24, onProgress, signal }) {
   const total = pieces.length;
   const work = await fsp.mkdtemp(path.join(os.tmpdir(), 'oeuvre-export-'));
   const written = [];
@@ -91,40 +137,39 @@ export async function exportPieces({ pieces, mode, dest, ffmpeg, bitrate, onProg
   }
 
   const report = (index, fraction, extra = {}) => {
-    onProgress?.({ index, total, overall: total ? (index + fraction) / total : 1, ...extra });
+    onProgress?.({ index, total, overall: total ? (index + fraction) / total : 1, format, ...extra });
   };
+
+  const convert = (p, out, onFraction) => (format === 'wav'
+    ? transcodeToWav({ ffmpeg, piece: p, out, title: p.title, lossyBits: wavLossyBits, signal, onFraction })
+    : transcodeToMp3({ ffmpeg, src: p.path, out, bitrate, sampleRate: p.sampleRate, title: p.title, duration: p.duration, signal, onFraction }));
 
   const prepared = []; // { name, file }
   try {
     for (let i = 0; i < pieces.length; i++) {
       if (signal?.aborted) throw Object.assign(new Error('Export cancelled'), { cancelled: true });
       const p = pieces[i];
-      const name = uniqueName(safeFileName(p.title), taken);
-      const isMp3 = (p.ext || path.extname(p.path).slice(1)).toLowerCase() === 'mp3';
-      report(i, 0, { title: p.title, phase: isMp3 ? 'copying' : 'converting' });
+      const name = uniqueName(safeFileName(p.title), taken, format);
+      const alreadyThere = (p.ext || path.extname(p.path).slice(1)).toLowerCase() === format;
+      report(i, 0, { title: p.title, phase: alreadyThere ? 'copying' : 'converting' });
+      const onFraction = (f) => report(i, f, { title: p.title, phase: 'converting' });
       try {
         await fsp.access(p.path, fs.constants.R_OK);
         if (mode === 'folder') {
           const out = path.join(dest, name);
-          if (isMp3) await fsp.copyFile(p.path, out, fs.constants.COPYFILE_EXCL);
+          if (alreadyThere) await fsp.copyFile(p.path, out, fs.constants.COPYFILE_EXCL);
           else {
             const part = path.join(work, name);
-            await transcodeToMp3({
-              ffmpeg, src: p.path, out: part, bitrate, sampleRate: p.sampleRate, title: p.title,
-              duration: p.duration, signal, onFraction: (f) => report(i, f, { title: p.title, phase: 'converting' }),
-            });
+            await convert(p, part, onFraction);
             await fsp.copyFile(part, out, fs.constants.COPYFILE_EXCL);
             await fsp.rm(part, { force: true });
           }
           written.push(name);
         } else {
           let file = p.path;
-          if (!isMp3) {
+          if (!alreadyThere) {
             file = path.join(work, name);
-            await transcodeToMp3({
-              ffmpeg, src: p.path, out: file, bitrate, sampleRate: p.sampleRate, title: p.title,
-              duration: p.duration, signal, onFraction: (f) => report(i, f, { title: p.title, phase: 'converting' }),
-            });
+            await convert(p, file, onFraction);
           }
           prepared.push({ name, file });
         }
@@ -138,7 +183,7 @@ export async function exportPieces({ pieces, mode, dest, ffmpeg, bitrate, onProg
 
     if (mode === 'zip') {
       if (!prepared.length) throw new Error('Nothing could be exported.');
-      onProgress?.({ index: total, total, overall: 1, phase: 'zipping' });
+      onProgress?.({ index: total, total, overall: 1, format, phase: 'zipping' });
       const part = `${dest}.part`;
       await new Promise((resolve, reject) => {
         const zip = new yazl.ZipFile();
@@ -146,6 +191,7 @@ export async function exportPieces({ pieces, mode, dest, ffmpeg, bitrate, onProg
         out.on('close', resolve);
         out.on('error', reject);
         zip.outputStream.on('error', reject).pipe(out);
+        // Audio is already compressed (MP3) or barely compressible (WAV): store it.
         for (const { name, file } of prepared) zip.addFile(file, name, { compress: false });
         zip.end();
         signal?.addEventListener('abort', () => { out.destroy(); reject(Object.assign(new Error('Export cancelled'), { cancelled: true })); }, { once: true });
@@ -153,8 +199,8 @@ export async function exportPieces({ pieces, mode, dest, ffmpeg, bitrate, onProg
       await fsp.rename(part, dest);
       written.push(...prepared.map((p) => p.name));
     }
-    onProgress?.({ index: total, total, overall: 1, phase: 'finished' });
-    return { dest, mode, written, failed };
+    onProgress?.({ index: total, total, overall: 1, format, phase: 'finished' });
+    return { dest, mode, format, written, failed };
   } catch (err) {
     if (mode === 'zip') await fsp.rm(`${dest}.part`, { force: true });
     throw err;

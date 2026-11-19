@@ -39,8 +39,10 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
         { label: 'Add Source Folder…', accelerator: 'CmdOrCtrl+O', click: () => actions.addSources() },
         { label: 'New Setlist', accelerator: 'CmdOrCtrl+N', click: cmd('newSetlist') },
         sep,
-        { label: 'Export Portfolio as ZIP…', click: cmd('exportPortfolio', 'zip') },
-        { label: 'Export Portfolio as MP3 Files…', click: cmd('exportPortfolio', 'folder') },
+        { label: 'Export Portfolio as ZIP…', click: cmd('exportCollection', { name: 'portfolio', mode: 'zip' }) },
+        { label: 'Export Portfolio as MP3 Files…', click: cmd('exportCollection', { name: 'portfolio', mode: 'folder' }) },
+        { label: 'Export Project as ZIP…', click: cmd('exportCollection', { name: 'project', mode: 'zip' }) },
+        { label: 'Export Project as WAV Files…', click: cmd('exportCollection', { name: 'project', mode: 'folder' }) },
         sep,
         { role: 'close' },
       ],
@@ -89,6 +91,7 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
       submenu: [
         { label: 'Oeuvre', accelerator: 'CmdOrCtrl+1', click: cmd('navigate', { view: 'oeuvre' }) },
         { label: 'Portfolio', accelerator: 'CmdOrCtrl+2', click: cmd('navigate', { view: 'portfolio' }) },
+        { label: 'Project', accelerator: 'CmdOrCtrl+3', click: cmd('navigate', { view: 'project' }) },
         sep,
         { label: 'Find', accelerator: 'CmdOrCtrl+F', click: cmd('focusSearch') },
         { label: 'Show Queue', accelerator: 'Alt+CmdOrCtrl+Q', click: cmd('toggleQueue') },
@@ -119,7 +122,7 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
 }
 
 /** Native right-click menu for one or more pieces. Resolves with the chosen action (or null). */
-export function pieceContextMenu(win, { pieces, setlists, inPortfolio, context, hasScore }) {
+export function pieceContextMenu(win, { pieces, setlists, inLists = {}, context, hasScore }) {
   return new Promise((resolve) => {
     const pick = (action, arg) => () => resolve({ action, arg });
     const many = pieces.length > 1;
@@ -128,9 +131,12 @@ export function pieceContextMenu(win, { pieces, setlists, inPortfolio, context, 
       { label: 'Play Next', click: pick('playNext') },
       { label: 'Add to Queue', click: pick('addToQueue') },
       { type: 'separator' },
-      inPortfolio
-        ? { label: 'Remove from Portfolio', click: pick('portfolioRemove') }
-        : { label: 'Add to Portfolio', click: pick('portfolioAdd') },
+      inLists.portfolio
+        ? { label: 'Remove from Portfolio', click: pick('listRemove', 'portfolio') }
+        : { label: 'Add to Portfolio', click: pick('listAdd', 'portfolio') },
+      inLists.project
+        ? { label: 'Remove from Project', click: pick('listRemove', 'project') }
+        : { label: 'Add to Project', click: pick('listAdd', 'project') },
       {
         label: 'Add to Setlist',
         submenu: [

@@ -2,6 +2,14 @@
 
 Each `## <version>` section becomes the release notes Oeuvre shows in **Check for Updates…**.
 
+## 1.2.0
+
+- New **Project** tab. It works like Portfolio: add pieces by right-clicking or dragging them onto Project in the sidebar, check pieces, flip newest/oldest first. It exports **WAV** files, individually or as one ZIP.
+  - WAV pieces are copied unchanged.
+  - FLAC keeps its own sample rate and bit depth.
+  - MP3 and AAC are decoded at their own sample rate to 24-bit WAV.
+- File menu: Export Project as ZIP… / as WAV Files…. View menu: Project (⌘3).
+
 ## 1.1.0
 
 - **Oeuvre** now lists pieces by name, newest first: names that start with a year put 2026 above 2014. The Title column shows the direction.

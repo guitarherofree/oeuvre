@@ -115,6 +115,7 @@ function ExportDialog() {
   const st = exportState.value;
   if (!st) return null;
   const done = st.phase === 'finished' && st.result;
+  const FORMAT = String(st.result?.format || st.format || 'mp3').toUpperCase();
   const pct = Math.round((st.overall || 0) * 100);
   const finish = () => { exportState.value = null; };
   if (done) {
@@ -128,7 +129,7 @@ function ExportDialog() {
         <div class="export-summary">
           <CheckCircle2 size={36} class="ok-icon" />
           <div>
-            <p><strong>{plural(r.written.length, 'MP3')}</strong> {r.mode === 'zip' ? 'saved in' : 'saved to'} <span class="mono">{r.dest.split('/').pop()}</span></p>
+            <p><strong>{plural(r.written.length, FORMAT)}</strong> {r.mode === 'zip' ? 'saved in' : 'saved to'} <span class="mono">{r.dest.split('/').pop()}</span></p>
             {r.failed.length ? (
               <ul class="export-failed">
                 {r.failed.map((f) => <li key={f.title}><CircleAlert size={14} /> {f.title}: {f.error}</li>)}
@@ -139,9 +140,9 @@ function ExportDialog() {
       </Dialog>
     );
   }
-  const verb = st.phase === 'zipping' ? 'Writing ZIP…' : st.phase === 'converting' ? 'Converting to MP3' : 'Copying';
+  const verb = st.phase === 'zipping' ? 'Writing ZIP…' : st.phase === 'converting' ? `Converting to ${FORMAT}` : 'Copying';
   return (
-    <Dialog title={st.mode === 'zip' ? 'Exporting ZIP' : 'Exporting MP3s'}
+    <Dialog title={st.mode === 'zip' ? 'Exporting ZIP' : `Exporting ${FORMAT}s`}
       footer={<button type="button" class="ghost-btn" onClick={() => invoke('export:cancel')}>Cancel</button>}>
       <div class="export-progress">
         <div class="export-line">

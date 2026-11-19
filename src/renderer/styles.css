@@ -134,6 +134,7 @@ html:not([data-platform="darwin"]) .sidebar-top { padding-left: 12px; }
   display: grid; place-items: center; width: 44px; height: 44px; border-radius: 6px;
   background: linear-gradient(135deg, #1c6b45, #0b2a1b); color: var(--text);
 }
+.nav-glyph-project { background: linear-gradient(135deg, #17605e, #0a2422); }
 .nav-item .nav-icon .logo-mark { width: 44px; height: 44px; }
 .nav-text { display: flex; flex-direction: column; min-width: 0; }
 .nav-label { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

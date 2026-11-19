@@ -15,6 +15,9 @@ const PDF_EXTS = new Set(config.scores.pdfExtensions);
 const IMAGE_EXTS = new Set(config.scores.imageExtensions);
 const NEEDS_CONVERSION = new Set(['heic', 'heif']);
 
+/** Simple lists of pieces: Portfolio (exports MP3) and Project (exports WAV). */
+export const LISTS = ['portfolio', 'project'];
+
 export function scoreKindFor(file) {
   const ext = path.extname(file).slice(1).toLowerCase();
   if (PDF_EXTS.has(ext)) return 'pdf';
@@ -26,7 +29,8 @@ export class Collections extends EventEmitter {
   constructor({ file, scoresDir }) {
     super();
     this.scoresDir = scoresDir;
-    this.store = new JsonFile(file, { version: 1, portfolio: [], setlists: [], scores: {}, refs: {} });
+    this.store = new JsonFile(file, { version: 1, portfolio: [], project: [], setlists: [], scores: {}, refs: {} });
+    for (const name of LISTS) if (!Array.isArray(this.store.data[name])) this.store.data[name] = [];
     fs.mkdirSync(scoresDir, { recursive: true });
     this.timer = null;
   }
@@ -49,14 +53,20 @@ export class Collections extends EventEmitter {
     }
   }
 
-  // ---------------------------------------------------------------- portfolio
+  // ---------------------------------------------------------------- Portfolio and Project
 
-  portfolioAdd(pieces) {
-    const have = new Set(this.data.portfolio.map((e) => e.pieceId));
+  #list(name) {
+    if (!LISTS.includes(name)) throw new Error(`Unknown collection ${name}`);
+    return this.data[name];
+  }
+
+  listAdd(name, pieces) {
+    const list = this.#list(name);
+    const have = new Set(list.map((e) => e.pieceId));
     let added = 0;
     for (const p of pieces) {
       if (!p || have.has(p.id)) continue;
-      this.data.portfolio.push({ pieceId: p.id, addedAt: Date.now() });
+      list.push({ pieceId: p.id, addedAt: Date.now() });
       have.add(p.id);
       added++;
     }
@@ -65,13 +75,21 @@ export class Collections extends EventEmitter {
     return added;
   }
 
-  portfolioRemove(pieceIds) {
+  listRemove(name, pieceIds) {
+    const list = this.#list(name);
     const drop = new Set(pieceIds);
-    const before = this.data.portfolio.length;
-    this.data.portfolio = this.data.portfolio.filter((e) => !drop.has(e.pieceId));
+    const kept = list.filter((e) => !drop.has(e.pieceId));
+    this.data[name] = kept;
     this.#changed();
-    return before - this.data.portfolio.length;
+    return list.length - kept.length;
   }
+
+  listHas(name, pieceId) {
+    return this.#list(name).some((e) => e.pieceId === pieceId);
+  }
+
+  portfolioAdd(pieces) { return this.listAdd('portfolio', pieces); }
+  portfolioRemove(pieceIds) { return this.listRemove('portfolio', pieceIds); }
 
   // ---------------------------------------------------------------- setlists
 
@@ -232,7 +250,7 @@ export class Collections extends EventEmitter {
   /** A piece's file moved or was renamed: point every reference at its new id. */
   relink(map) {
     let touched = false;
-    for (const e of this.data.portfolio) if (map[e.pieceId]) { e.pieceId = map[e.pieceId]; touched = true; }
+    for (const name of LISTS) for (const e of this.data[name]) if (map[e.pieceId]) { e.pieceId = map[e.pieceId]; touched = true; }
     for (const s of this.data.setlists) for (const it of s.items) if (map[it.pieceId]) { it.pieceId = map[it.pieceId]; touched = true; }
     for (const [oldId, newId] of Object.entries(map)) {
       if (this.data.scores[oldId]) {

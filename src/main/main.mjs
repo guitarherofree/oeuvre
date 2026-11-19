@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import config from '../config.mjs';
 import { JsonFile } from './store.mjs';
 import { Library } from './library.mjs';
-import { Collections } from './collections.mjs';
+import { Collections, LISTS } from './collections.mjs';
 import { exportPieces } from './exporter.mjs';
 import { Updater } from './updater.mjs';
 import { registerSchemes, handleSchemes } from './protocol.mjs';
@@ -237,20 +237,20 @@ function registerIpc() {
   });
   handle('piece:contextMenu', ({ pieceIds, context }) => {
     const ids = pieceIds || [];
-    const inPortfolio = ids.length > 0 && ids.every((id) => collections.data.portfolio.some((e) => e.pieceId === id));
+    const inLists = Object.fromEntries(LISTS.map((name) => [name, ids.length > 0 && ids.every((id) => collections.listHas(name, id))]));
     return pieceContextMenu(win, {
       pieces: ids,
       setlists: collections.data.setlists,
-      inPortfolio,
+      inLists,
       context,
       hasScore: ids.length === 1 && collections.scoresFor(ids[0]).length > 0,
     });
   });
 
-  // portfolio + setlists
+  // Portfolio, Project and setlists
   const piecesOrRefs = (ids) => (ids || []).map((id) => library.getPiece(id) || (collections.data.refs[id] && { id, ...collections.data.refs[id] })).filter(Boolean);
-  handle('portfolio:add', (ids) => collections.portfolioAdd(piecesOrRefs(ids)));
-  handle('portfolio:remove', (ids) => collections.portfolioRemove(ids));
+  handle('collection:add', (name, ids) => collections.listAdd(name, piecesOrRefs(ids)));
+  handle('collection:remove', (name, ids) => collections.listRemove(name, ids));
   handle('setlist:create', ({ name, pieceIds } = {}) => {
     const s = collections.setlistCreate({ name });
     if (pieceIds?.length) collections.setlistAdd(s.id, piecesOrRefs(pieceIds));
@@ -324,23 +324,25 @@ function registerIpc() {
   handle('score:reorder', (pieceId, ids) => collections.reorderScores(pieceId, ids));
 
   // export
-  handle('export:start', async ({ pieceIds, mode }) => {
+  handle('export:start', async ({ pieceIds, mode, format = 'mp3', label = 'Portfolio' }) => {
     const pieces = piecesFor(pieceIds);
     if (!pieces.length) return { error: 'None of the selected pieces are available.' };
+    if (!['mp3', 'wav'].includes(format)) return { error: `Unknown export format ${format}` };
+    const FORMAT = format.toUpperCase();
     let dest;
     const stamp = new Date().toISOString().slice(0, 10);
     if (mode === 'zip') {
       const res = await dialog.showSaveDialog(win, {
-        title: 'Export Portfolio as ZIP',
-        defaultPath: path.join(app.getPath('downloads'), `Oeuvre Portfolio ${stamp}.zip`),
+        title: `Export ${label} as ZIP`,
+        defaultPath: path.join(app.getPath('downloads'), `Oeuvre ${label} ${stamp}.zip`),
         filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
       });
       if (res.canceled || !res.filePath) return { canceled: true };
       dest = res.filePath.endsWith('.zip') ? res.filePath : `${res.filePath}.zip`;
     } else {
       const res = await dialog.showOpenDialog(win, {
-        title: 'Export Portfolio as MP3 Files',
-        message: 'Choose a folder for the MP3 files.',
+        title: `Export ${label} as ${FORMAT} Files`,
+        message: `Choose a folder for the ${FORMAT} files.`,
         buttonLabel: 'Export Here',
         properties: ['openDirectory', 'createDirectory'],
         defaultPath: app.getPath('downloads'),
@@ -349,12 +351,13 @@ function registerIpc() {
       dest = res.filePaths[0];
     }
     exportAbort = new AbortController();
-    send('export:progress', { phase: 'starting', index: 0, total: pieces.length, overall: 0, mode, dest });
+    send('export:progress', { phase: 'starting', index: 0, total: pieces.length, overall: 0, mode, dest, format });
     try {
       const result = await exportPieces({
-        pieces, mode, dest,
+        pieces, mode, dest, format,
         ffmpeg: ffmpegPath(),
         bitrate: config.export.mp3BitrateKbps,
+        wavLossyBits: config.export.wavBitDepthFromLossy,
         signal: exportAbort.signal,
         onProgress: (p) => send('export:progress', { ...p, mode, dest }),
       });

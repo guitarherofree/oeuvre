@@ -33,9 +33,17 @@ const config = {
     sortDescending: true,
   },
 
+  project: {
+    // Same as Portfolio, but exports WAV files.
+    sortDescending: true,
+  },
+
   export: {
     // Bitrate used when a Portfolio piece is converted to MP3 during export.
     mp3BitrateKbps: 320,
+    // Project exports WAV. WAV files are copied as they are; FLAC keeps its own sample
+    // rate and bit depth; MP3/AAC are decoded at their sample rate to this bit depth.
+    wavBitDepthFromLossy: 24,
   },
 
   scores: {

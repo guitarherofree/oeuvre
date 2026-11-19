@@ -17,6 +17,9 @@ function check(name, ok, detail = '') {
 }
 
 // ------------------------------------------------------------------ mock GitHub
+// The mock always offers a version newer than the app being tested.
+const NEXT = '99.0.0';
+
 function startMockGitHub(port, zipPath) {
   const TOKEN = 'github_pat_test';
   const server = http.createServer((req, res) => {
@@ -25,13 +28,13 @@ function startMockGitHub(port, zipPath) {
       if (auth !== `Bearer ${TOKEN}`) { res.writeHead(404, { 'content-type': 'application/json' }); return res.end('{"message":"Not Found"}'); }
       res.writeHead(200, { 'content-type': 'application/json' });
       return res.end(JSON.stringify({
-        tag_name: 'v1.1.0',
-        name: 'Oeuvre 1.1.0',
+        tag_name: `v${NEXT}`,
+        name: `Oeuvre ${NEXT}`,
         published_at: '2026-11-20T15:00:00Z',
         html_url: 'https://github.com/guitarherofree/oeuvre/releases/tag/v1.1.0',
         body: '## What\'s new\n\n- Setlists show each piece\'s **start time**\n- Faster scanning of large folders\n- Fixed: PDF scores remember their zoom\n\n<script>alert(1)</script>',
-        assets: [{ id: 42, name: 'Oeuvre-1.1.0-mac-x64.zip', size: fs.statSync(zipPath).size, url: `http://127.0.0.1:${port}/asset/42` },
-          { id: 43, name: 'Oeuvre-1.1.0-mac-arm64.zip', size: fs.statSync(zipPath).size, url: `http://127.0.0.1:${port}/asset/42` }],
+        assets: [{ id: 42, name: `Oeuvre-${NEXT}-mac-x64.zip`, size: fs.statSync(zipPath).size, url: `http://127.0.0.1:${port}/asset/42` },
+          { id: 43, name: `Oeuvre-${NEXT}-mac-arm64.zip`, size: fs.statSync(zipPath).size, url: `http://127.0.0.1:${port}/asset/42` }],
       }));
     }
     if (req.url === '/asset/42') {
@@ -55,7 +58,7 @@ function startMockGitHub(port, zipPath) {
 function makeFakeUpdateZip(dir) {
   const app = path.join(dir, 'Oeuvre.app', 'Contents');
   fs.mkdirSync(path.join(app, 'MacOS'), { recursive: true });
-  fs.writeFileSync(path.join(app, 'Info.plist'), '<plist><dict><key>CFBundleIdentifier</key>\n<string>com.guitarherofree.oeuvre</string><key>CFBundleShortVersionString</key><string>1.1.0</string></dict></plist>');
+  fs.writeFileSync(path.join(app, 'Info.plist'), `<plist><dict><key>CFBundleIdentifier</key>\n<string>com.guitarherofree.oeuvre</string><key>CFBundleShortVersionString</key><string>${NEXT}</string></dict></plist>`);
   fs.writeFileSync(path.join(app, 'MacOS', 'Oeuvre'), '#!/bin/sh\n');
   const zip = path.join(dir, 'update.zip');
   execFileSync('zip', ['-qry', zip, 'Oeuvre.app'], { cwd: dir });
@@ -194,7 +197,7 @@ export async function run({ app, win, library, collections, updater, state }) {
     check('flip button label', (await js(`document.querySelector('.sort-toggle').textContent`)) === 'Oldest first');
     await shot('07a-portfolio-flipped');
     await sleep(600);
-    check('flip is remembered', state.data.ui?.portfolioDescending === false);
+    check('flip is remembered', state.data.ui?.listDescending?.portfolio === false);
     await js(`document.querySelector('.tl-head .sort-head').click()`);
     check('title header flips back', await waitFor(`document.querySelector('.sort-toggle').textContent === 'Newest first'`));
     await js(`(() => { const rows = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')]; for (const t of ['Encore Sketch', 'Pianissimo for Feldman']) rows.find(r => r.textContent.includes(t)).querySelector('.checkbox').click(); })()`);
@@ -212,6 +215,41 @@ export async function run({ app, win, library, collections, updater, state }) {
     await shot('08-export-done');
     const listing = execFileSync('unzip', ['-l', zipOut]).toString();
     check('zip has converted MP3s', /Encore Sketch\.mp3/.test(listing) && /Pianissimo for Feldman\.mp3/.test(listing), listing.split('\n').slice(3, 6).join(' '));
+    await js(`document.querySelector('.dialog .primary-btn').click()`);
+    await sleep(200);
+
+    // Project: same as Portfolio, exports WAV
+    check('Project tab in the sidebar', await js(`[...document.querySelectorAll('.nav-item .nav-label')].some(e => e.textContent === 'Project')`));
+    cmd('navigate', { view: 'oeuvre' });
+    await waitFor(`!!document.querySelector('.tracklist .tl-row:not(.tl-head)')`);
+    const pd = await js(`(() => {
+      const row = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')].find(r => r.textContent.includes('Night Window')).getBoundingClientRect();
+      const item = [...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Project')).getBoundingClientRect();
+      return { from: { x: row.left + 300, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
+    })()`);
+    await nativeDrag(w, pd.from, pd.to);
+    check('dragging a piece onto Project adds it', await (async () => { await sleep(500); return collections.data.project.length === 1; })());
+    collections.listAdd('project', ['Tapping Etude No. 10', 'Tapping Etude No. 2', 'Harmonic Field'].map(byTitle));
+    check('Project is separate from Portfolio', collections.data.portfolio.length === 5 && collections.data.project.length === 4);
+    cmd('navigate', { view: 'project' });
+    check('Project shows 4, newest first', await waitFor(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|') === 'Tapping Etude No. 10|Tapping Etude No. 2|Night Window|Harmonic Field'`));
+    check('Project header says it exports WAV', await js(`document.querySelector('.view-meta').textContent.includes('Exports WAV')`));
+    await js(`document.querySelector('.sort-toggle').click()`);
+    check('Project flips independently', await waitFor(`document.querySelector('.tl-title').textContent === 'Harmonic Field'`) && state.data.ui?.listDescending?.portfolio !== false);
+    await js(`document.querySelector('.sort-toggle').click()`);
+    await js(`(() => { const rows = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')]; for (const t of ['Tapping Etude No. 10', 'Night Window', 'Tapping Etude No. 2']) rows.find(r => r.textContent.includes(t)).querySelector('.checkbox').click(); })()`);
+    await sleep(200);
+    check('WAV export labels', (await js(`document.querySelector('.export-group .pill-btn').textContent`)).includes('Export 3 as WAVs') && (await js(`document.querySelector('.export-hint').textContent`)) === '2 pieces will be converted to WAV');
+    await shot('07b-project');
+    const wavZip = path.join(out, 'Project export.zip');
+    fs.rmSync(wavZip, { force: true });
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath: wavZip });
+    await js(`[...document.querySelectorAll('.export-group .pill-btn')][1].click()`);
+    check('WAV export finishes', await waitFor(`!!document.querySelector('.export-summary')`, 20000));
+    check('summary counts WAVs', (await js(`document.querySelector('.export-summary strong').textContent`)) === '3 WAVs');
+    await shot('08c-project-export-done');
+    const wavListing = execFileSync('unzip', ['-l', wavZip]).toString();
+    check('ZIP holds WAV files', /Tapping Etude No\. 10\.wav/.test(wavListing) && /Night Window\.wav/.test(wavListing) && /Tapping Etude No\. 2\.wav/.test(wavListing) && !/\.mp3/.test(wavListing));
     await js(`document.querySelector('.dialog .primary-btn').click()`);
     await sleep(200);
 

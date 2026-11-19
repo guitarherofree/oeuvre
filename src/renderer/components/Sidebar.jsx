@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'preact/hooks';
-import { Briefcase, Plus, FolderOpen, ChevronDown, FolderPlus, RefreshCw, Minus, ListMusic, CircleAlert } from 'lucide-preact';
+import { Briefcase, Plus, FolderOpen, ChevronDown, FolderPlus, RefreshCw, Minus, ListMusic, CircleAlert, AudioWaveform } from 'lucide-preact';
 import {
   route, navigate, collections, library, sourcesMenuOpen, invoke, dragging, piecesById, libraryPieces,
 } from '../lib/store.js';
 import { player } from '../lib/player.js';
-import { addToPortfolio, addToSetlist, promptNewSetlist, addSourceFolders } from '../lib/actions.js';
+import { addToList, addToSetlist, promptNewSetlist, addSourceFolders } from '../lib/actions.js';
 import { fmtShowDate, plural } from '../lib/format.js';
 import { Logo, LogoMark, Mosaic, Checkbox } from './Common.jsx';
 
@@ -140,7 +140,16 @@ export function Sidebar() {
           sub={plural(col.portfolio.length, 'work sample')}
           playing={playingIn('portfolio')}
           onClick={() => navigate({ view: 'portfolio' })}
-          drop={(ids) => addToPortfolio(ids)}
+          drop={(ids) => addToList('portfolio', ids)}
+        />
+        <NavItem
+          active={r.view === 'project'}
+          icon={<span class="nav-glyph nav-glyph-project"><AudioWaveform size={16} /></span>}
+          label="Project"
+          sub={`${plural((col.project || []).length, 'piece')} · WAV`}
+          playing={playingIn('project')}
+          onClick={() => navigate({ view: 'project' })}
+          drop={(ids) => addToList('project', ids)}
         />
         <SourcesMenu />
       </div>

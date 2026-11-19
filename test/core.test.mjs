@@ -146,3 +146,58 @@ test('Oeuvre order: by name, newest first (years descending, natural numbers)', 
   ]);
   assert.deepEqual(sortByTitle(list, false).map((p) => p.title)[0], '2014 First Light');
 });
+
+test('Project export: WAV copied as-is, lossless keeps depth and rate, lossy decodes to 24-bit', async () => {
+  const dir = tmp();
+  const lib = new Library({ file: path.join(dir, 'library.json'), artDir: path.join(dir, 'art') });
+  lib.addSources([path.join(fixtures, 'Music')]);
+  await lib.scanAll();
+  const pieces = Object.values(lib.pieces);
+  const byT = (t) => pieces.find((p) => p.title === t);
+  const out = path.join(dir, 'wav');
+  const res = await exportPieces({ pieces, mode: 'folder', format: 'wav', dest: out, ffmpeg, bitrate: 320, wavLossyBits: 24 });
+  assert.equal(res.failed.length, 0, JSON.stringify(res.failed));
+  assert.equal(res.format, 'wav');
+  assert.deepEqual(fs.readdirSync(out).filter((f) => !f.endsWith('.wav')), []);
+  const { parseFile } = await import('music-metadata');
+  // WAV source: byte-identical copy
+  const wav = byT('Tapping Etude No. 2');
+  assert.ok(fs.readFileSync(wav.path).equals(fs.readFileSync(path.join(out, 'Tapping Etude No. 2.wav'))));
+  // FLAC 96 kHz: same rate and bit depth
+  const flac = byT('Tapping Etude No. 10');
+  const mf = await parseFile(path.join(out, 'Tapping Etude No. 10.wav'));
+  assert.equal(mf.format.container, 'WAVE');
+  assert.equal(mf.format.sampleRate, 96000);
+  assert.equal(mf.format.bitsPerSample, flac.bitsPerSample);
+  assert.equal(mf.common.title, 'Tapping Etude No. 10');
+  // MP3 and AAC: decoded at their own rate to 24-bit
+  for (const t of ['Night Window', 'Harmonic Field']) {
+    const m = await parseFile(path.join(out, `${t}.wav`));
+    assert.equal(m.format.bitsPerSample, 24, t);
+    assert.equal(m.format.sampleRate, byT(t).sampleRate, t);
+    assert.ok(Math.abs(m.format.duration - byT(t).duration) < 0.2, `${t} duration`);
+  }
+  const zip = path.join(dir, 'Project.zip');
+  const rz = await exportPieces({ pieces: [flac, wav], mode: 'zip', format: 'wav', dest: zip, ffmpeg, bitrate: 320 });
+  assert.deepEqual(rz.written.sort(), ['Tapping Etude No. 10.wav', 'Tapping Etude No. 2.wav']);
+  lib.close();
+});
+
+test('Project list is separate from Portfolio and survives relinking', () => {
+  const dir = tmp();
+  const col = new Collections({ file: path.join(dir, 'collections.json'), scoresDir: path.join(dir, 'scores') });
+  const a = { id: 'p_a', title: 'A', path: '/a.wav' };
+  const b = { id: 'p_b', title: 'B', path: '/b.wav' };
+  assert.equal(col.listAdd('project', [a, b]), 2);
+  assert.equal(col.listAdd('project', [a]), 0);
+  assert.equal(col.data.portfolio.length, 0);
+  assert.ok(col.listHas('project', 'p_b'));
+  col.relink({ p_b: 'p_c' });
+  assert.deepEqual(col.data.project.map((e) => e.pieceId), ['p_a', 'p_c']);
+  assert.equal(col.listRemove('project', ['p_a']), 1);
+  assert.throws(() => col.listAdd('nope', [a]));
+  col.close();
+  const again = new Collections({ file: path.join(dir, 'collections.json'), scoresDir: path.join(dir, 'scores') });
+  assert.deepEqual(again.data.project.map((e) => e.pieceId), ['p_c']);
+  again.close();
+});

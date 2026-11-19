@@ -39,7 +39,7 @@ function Slider({ value, max, onCommit, onLive, label, class: cls = '' }) {
 function contextRoute(ctx) {
   if (!ctx) return null;
   if (ctx.type === 'oeuvre') return { view: 'oeuvre' };
-  if (ctx.type === 'portfolio') return { view: 'portfolio' };
+  if (ctx.type === 'portfolio' || ctx.type === 'project') return { view: ctx.type };
   if (ctx.type === 'setlist') return { view: 'setlist', id: ctx.id };
   return null;
 }

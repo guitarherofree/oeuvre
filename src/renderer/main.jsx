@@ -3,14 +3,14 @@ import { ChevronLeft, ChevronRight, CircleArrowUp } from 'lucide-preact';
 import {
   api, invoke, ready, appInfo, library, collections, route, queueOpen, updateStatus, exportState, modal,
   navigate, goBack, goForward, canGoBack, canGoForward, setlistsById, sourcesMenuOpen, toast, scoresFor,
-  portfolioDescending,
+  listDescending, LISTS,
 } from './lib/store.js';
 import {
   player, restore, togglePlay, next, previous, setVolume, toggleShuffle, setRepeat, cycleRepeat, pruneMissing,
 } from './lib/player.js';
 import { promptNewSetlist, playCurrentPage, openScore, checkForUpdates, exportPieces } from './lib/actions.js';
 import { Sidebar } from './components/Sidebar.jsx';
-import { OeuvreView, PortfolioView, SetlistView } from './components/Views.jsx';
+import { OeuvreView, ListView, SetlistView } from './components/Views.jsx';
 import { ScoreView } from './components/ScoreView.jsx';
 import { PlayerBar, QueuePanel } from './components/PlayerBar.jsx';
 import { Modals, Toasts } from './components/Modals.jsx';
@@ -45,7 +45,7 @@ function Main() {
     <>
       <TopBar />
       <div class="main-scroll" onScroll={onMainScroll}>
-        {r.view === 'portfolio' ? <PortfolioView />
+        {LISTS[r.view] ? <ListView name={r.view} key={r.view} />
           : r.view === 'setlist' ? <SetlistView id={r.id} key={r.id} />
             : <OeuvreView />}
       </div>
@@ -103,11 +103,11 @@ function runCommand(cmd, arg) {
       else toast('No score attached to this piece.', { action: 'Attach…', onAction: () => openScore(id) });
       break;
     }
-    case 'exportPortfolio': {
-      navigate({ view: 'portfolio' });
-      const ids = collections.value.portfolio.map((e) => e.pieceId);
-      if (!ids.length) toast('Your Portfolio is empty.');
-      else exportPieces(ids, arg);
+    case 'exportCollection': {
+      navigate({ view: arg.name });
+      const ids = collections.value[arg.name].map((e) => e.pieceId);
+      if (!ids.length) toast(`Your ${LISTS[arg.name].label} is empty.`);
+      else exportPieces(ids, arg.mode, arg.name);
       break;
     }
     default:
@@ -165,7 +165,9 @@ async function boot() {
     if (r.view !== 'setlist' || init.collections.setlists.some((s) => s.id === r.id)) route.value = r;
   }
   queueOpen.value = !!init.ui?.queueOpen;
-  if (typeof init.ui?.portfolioDescending === 'boolean') portfolioDescending.value = init.ui.portfolioDescending;
+  const savedOrder = { ...(init.ui?.listDescending || {}) };
+  if (typeof init.ui?.portfolioDescending === 'boolean') savedOrder.portfolio ??= init.ui.portfolioDescending; // 1.1.0
+  for (const name of Object.keys(LISTS)) if (typeof savedOrder[name] === 'boolean') listDescending.value = { ...listDescending.value, [name]: savedOrder[name] };
   restore(init.player);
   document.documentElement.dataset.platform = init.platform;
 
