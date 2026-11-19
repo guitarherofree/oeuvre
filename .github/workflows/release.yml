@@ -1,0 +1,69 @@
+# Builds Oeuvre on an Apple silicon Mac and publishes a GitHub Release.
+# Oeuvre's "Check for Updates…" reads these releases.
+#
+# To release: add a "## <version>" section to CHANGELOG.md, then
+#   git tag v1.2.0 && git push origin v1.2.0
+# or run this workflow by hand from the Actions tab and type a version.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 1.2.0'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set version
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then V="${GITHUB_REF_NAME#v}"; else V="${{ inputs.version }}"; V="${V#v}"; fi
+          npm version "$V" --no-git-tag-version --allow-same-version
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Build, sign (ad-hoc) and zip
+        run: npm run dist:mac
+
+      - name: Release notes
+        run: node scripts/release-notes.mjs "$VERSION" > notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP="out/Oeuvre-$VERSION-mac-arm64.zip"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "$ZIP" --clobber
+          else
+            gh release create "v$VERSION" "$ZIP" --title "Oeuvre $VERSION" --notes-file notes.md --target "$GITHUB_SHA"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Oeuvre-${{ env.VERSION }}-mac-arm64
+          path: out/Oeuvre-*-mac-arm64.zip
+          retention-days: 14

@@ -1,0 +1,39 @@
+/*
+  Oeuvre theme — edit these values to restyle the app, then rebuild.
+  Every color in the interface comes from this file.
+*/
+:root {
+  /* Accent (buttons, now-playing, progress, check marks) */
+  --accent: #34e089;
+  --accent-hover: #4ff09c;
+  --accent-press: #22c472;
+  --accent-ink: #000000;           /* text/icons drawn on top of the accent */
+  --accent-soft: rgba(52, 224, 137, 0.14);
+  --accent-glow: rgba(52, 224, 137, 0.35);
+
+  /* Surfaces, darkest to lightest */
+  --bg: #000000;                   /* window background, player bar */
+  --panel: #0c110e;                /* sidebar and main panels */
+  --panel-raised: #141b17;         /* hover rows, cards, inputs */
+  --panel-high: #1d2721;           /* menus, modals, pressed */
+  --border: rgba(255, 255, 255, 0.08);
+  --scrim: rgba(0, 0, 0, 0.62);
+
+  /* Header gradient at the top of each page */
+  --header-from: #0f5a37;
+  --header-to: var(--panel);
+
+  /* Text */
+  --text: #f2f6f3;
+  --text-muted: #a3b0a8;
+  --text-faint: #6c7a72;
+  --danger: #ff6b6b;
+
+  /* Type and shape */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Inter", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Inter", system-ui, sans-serif;
+  --font-mark: "New York", "Iowan Old Style", "Palatino", "Georgia", "DejaVu Serif", serif;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --row-height: 56px;
+}
