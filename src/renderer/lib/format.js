@@ -1,6 +1,8 @@
 export const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 export const byTitle = (a, b) => collator.compare(a.title || '', b.title || '') || collator.compare(a.path || '', b.path || '');
+export const byTitleDesc = (a, b) => byTitle(b, a);
+export const sortByTitle = (list, descending) => list.slice().sort(descending ? byTitleDesc : byTitle);
 
 const pad = (n) => String(n).padStart(2, '0');
 

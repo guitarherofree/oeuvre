@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, CircleArrowUp } from 'lucide-preact';
 import {
   api, invoke, ready, appInfo, library, collections, route, queueOpen, updateStatus, exportState, modal,
   navigate, goBack, goForward, canGoBack, canGoForward, setlistsById, sourcesMenuOpen, toast, scoresFor,
+  portfolioDescending,
 } from './lib/store.js';
 import {
   player, restore, togglePlay, next, previous, setVolume, toggleShuffle, setRepeat, cycleRepeat, pruneMissing,
@@ -164,6 +165,7 @@ async function boot() {
     if (r.view !== 'setlist' || init.collections.setlists.some((s) => s.id === r.id)) route.value = r;
   }
   queueOpen.value = !!init.ui?.queueOpen;
+  if (typeof init.ui?.portfolioDescending === 'boolean') portfolioDescending.value = init.ui.portfolioDescending;
   restore(init.player);
   document.documentElement.dataset.platform = init.platform;
 

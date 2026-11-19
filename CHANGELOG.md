@@ -2,6 +2,12 @@
 
 Each `## <version>` section becomes the release notes Oeuvre shows in **Check for Updates…**.
 
+## 1.1.0
+
+- **Oeuvre** now lists pieces by name, newest first: names that start with a year put 2026 above 2014. The Title column shows the direction.
+- **Portfolio** has a **Newest first / Oldest first** button that flips the order (clicking the Title column does the same). Oeuvre remembers your choice.
+- **Setlists**: every row now shows a drag handle, and you can also move a selected piece with ⌥↑ / ⌥↓. Dragging pieces from Oeuvre onto a setlist in the sidebar still adds them.
+
 ## 1.0.0
 
 First release.

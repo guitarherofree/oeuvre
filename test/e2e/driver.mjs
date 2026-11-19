@@ -62,6 +62,31 @@ function makeFakeUpdateZip(dir) {
   return zip;
 }
 
+// ------------------------------------------------------------------ drag and drop
+// Drives Chromium's own drag pipeline (the method Puppeteer uses): a real mouse press
+// and move start a native drag, then the drop is delivered through DevTools, so no
+// window manager is needed.
+async function nativeDrag(w, from, to) {
+  const dbg = w.webContents.debugger;
+  if (!dbg.isAttached()) dbg.attach('1.3');
+  await dbg.sendCommand('Input.setInterceptDrags', { enabled: true });
+  let onMsg;
+  const intercepted = new Promise((resolve) => {
+    onMsg = (_e, method, params) => { if (method === 'Input.dragIntercepted') resolve(params.data); };
+    dbg.on('message', onMsg);
+    setTimeout(() => resolve(null), 3000);
+  });
+  const mouse = (type, x, y, extra = {}) => dbg.sendCommand('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1, ...extra });
+  await mouse('mousePressed', from.x, from.y, { buttons: 1 });
+  for (let i = 1; i <= 10; i++) await mouse('mouseMoved', from.x + ((to.x - from.x) * i) / 10, from.y + ((to.y - from.y) * i) / 10, { buttons: 1 });
+  const data = await intercepted;
+  dbg.removeListener('message', onMsg);
+  if (data) for (const type of ['dragEnter', 'dragOver', 'drop']) await dbg.sendCommand('Input.dispatchDragEvent', { type, x: to.x, y: to.y, data });
+  await mouse('mouseReleased', to.x, to.y);
+  await dbg.sendCommand('Input.setInterceptDrags', { enabled: false });
+  return !!data;
+}
+
 // ------------------------------------------------------------------ driver
 export async function run({ app, win, library, collections, updater, state }) {
   fs.mkdirSync(out, { recursive: true });
@@ -81,6 +106,11 @@ export async function run({ app, win, library, collections, updater, state }) {
     fs.writeFileSync(path.join(out, `${name}.png`), img.toPNG());
   };
   const cmd = (c, arg) => w.webContents.send('menu:command', c, arg);
+  const invokeRemoveLast = async () => {
+    const s = collections.data.setlists[0];
+    collections.setlistRemoveItems(s.id, [s.items[s.items.length - 1].id]);
+    await sleep(300);
+  };
   const waitFor = async (code, timeout = 8000) => {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) {
@@ -99,7 +129,8 @@ export async function run({ app, win, library, collections, updater, state }) {
     await js(`document.querySelector('.welcome .primary-btn').click()`);
     check('library lists 8 pieces', await waitFor(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head)').length === 8`, 15000));
     const titles = await js(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent)`);
-    check('sorted by title (natural order)', JSON.stringify(titles) === JSON.stringify(['Atlanta, March (live)', 'Encore Sketch', 'Harmonic Field', 'Night Window', 'Pianissimo for Feldman', 'Silence Between (draft)', 'Tapping Etude No. 2', 'Tapping Etude No. 10']), titles.join(' | '));
+    check('Oeuvre sorted by name, newest first (Z→A, natural)', JSON.stringify(titles) === JSON.stringify(['Tapping Etude No. 10', 'Tapping Etude No. 2', 'Silence Between (draft)', 'Pianissimo for Feldman', 'Night Window', 'Harmonic Field', 'Encore Sketch', 'Atlanta, March (live)']), titles.join(' | '));
+    check('Title column shows the sort direction', await js(`!!document.querySelector('.tl-head .sort-head svg')`));
     await shot('02-oeuvre');
 
     // Search
@@ -108,8 +139,8 @@ export async function run({ app, win, library, collections, updater, state }) {
     await shot('03-search');
     await js(`(() => { const i = document.querySelector('.filter-box input'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
 
-    // Playback: double-click "Harmonic Field" (row 3)
-    await js(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')[2].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
+    // Playback: double-click "Harmonic Field"
+    await js(`[...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')].find(r => r.textContent.includes('Harmonic Field')).dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))`);
     check('playing after double-click', await waitFor(`document.querySelector('.play-btn')?.getAttribute('aria-label') === 'Pause'`));
     await sleep(1500);
     const t1 = await js(`document.querySelector('.progress .time').textContent`);
@@ -121,7 +152,7 @@ export async function run({ app, win, library, collections, updater, state }) {
     const t2 = await js(`document.querySelector('.progress .time').textContent`);
     check('seek works', t2 === '0:10' || t2 === '0:11', t2);
     cmd('next');
-    check('next goes to following piece', await waitFor(`document.querySelector('.np-title').textContent === 'Night Window'`));
+    check('next goes to following piece', await waitFor(`document.querySelector('.np-title').textContent === 'Encore Sketch'`));
     cmd('toggleQueue');
     await sleep(400);
     await shot('04-playing-queue');
@@ -155,7 +186,18 @@ export async function run({ app, win, library, collections, updater, state }) {
     cmd('navigate', { view: 'portfolio' });
     check('portfolio shows 5', await waitFor(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head)').length === 5`));
     check('hidden-folder pieces stay in portfolio', await js(`[...document.querySelectorAll('.tl-title')].some(e => e.textContent === 'Encore Sketch')`));
-    await js(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head) .checkbox')[0].click(); document.querySelectorAll('.tracklist .tl-row:not(.tl-head) .checkbox')[3].click();`);
+    const portfolioOrder = () => js(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|')`);
+    const newest = 'Tapping Etude No. 10|Pianissimo for Feldman|Night Window|Harmonic Field|Encore Sketch';
+    check('portfolio starts newest first', (await portfolioOrder()) === newest, await portfolioOrder());
+    await js(`document.querySelector('.sort-toggle').click()`);
+    check('flip button reverses portfolio', await waitFor(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|') === ${JSON.stringify(newest.split('|').reverse().join('|'))}`));
+    check('flip button label', (await js(`document.querySelector('.sort-toggle').textContent`)) === 'Oldest first');
+    await shot('07a-portfolio-flipped');
+    await sleep(600);
+    check('flip is remembered', state.data.ui?.portfolioDescending === false);
+    await js(`document.querySelector('.tl-head .sort-head').click()`);
+    check('title header flips back', await waitFor(`document.querySelector('.sort-toggle').textContent === 'Newest first'`));
+    await js(`(() => { const rows = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')]; for (const t of ['Encore Sketch', 'Pianissimo for Feldman']) rows.find(r => r.textContent.includes(t)).querySelector('.checkbox').click(); })()`);
     await sleep(200);
     check('two pieces checked', (await js(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head) .checkbox.is-checked').length`)) === 2);
     check('export buttons enabled after checking', await js(`!document.querySelector('.export-group .pill-btn').disabled`));
@@ -186,17 +228,40 @@ export async function run({ app, win, library, collections, updater, state }) {
     check('start times accumulate', (await js(`[...document.querySelectorAll('.col-start')].slice(1).map(e => e.textContent).join(',')`)) === '0:00,0:22,1:02,1:20,1:32');
     await shot('09-setlist');
 
-    // Reorder by drag and drop: move row 5 to the top
-    const reordered = await js(`(() => {
+    // Reorder by dragging row 5's handle above row 1
+    const pts = await js(`(() => {
       const rows = document.querySelectorAll('.tracklist .tl-row:not(.tl-head)');
-      const dt = new DataTransfer();
-      rows[4].dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
-      const r = rows[0].getBoundingClientRect();
-      rows[0].dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt, clientY: r.top + 2 }));
-      return new Promise(res => setTimeout(() => { rows[0].dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt, clientY: r.top + 2 })); res(true); }, 50));
+      const g = rows[4].querySelector('.col-grip').getBoundingClientRect();
+      const t = rows[0].getBoundingClientRect();
+      return { from: { x: g.left + g.width / 2, y: g.top + g.height / 2 }, to: { x: t.left + 200, y: t.top + 6 } };
     })()`);
-    check('drag reorder dispatched', reordered);
-    check('drag reorder applied', await waitFor(`document.querySelector('.tl-title').textContent === 'Tapping Etude No. 10'`));
+    check('mouse press on the handle starts a drag', await nativeDrag(w, pts.from, pts.to));
+    check('dropping reorders the setlist', await waitFor(`document.querySelector('.tl-title').textContent === 'Tapping Etude No. 10'`),
+      await js(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|')`));
+    check('new order is saved', collections.data.setlists[0].items.map((it) => library.pieces[it.pieceId]?.title)[0] === 'Tapping Etude No. 10');
+    await shot('09a-setlist-dragged');
+    // Keyboard reorder: select the first row, ⌥↓ twice
+    await js(`document.querySelector('.tracklist .tl-row:not(.tl-head)').click(); document.querySelector('.tracklist').focus()`);
+    for (let i = 0; i < 2; i++) {
+      await js(`document.querySelector('.tracklist').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }))`);
+      await sleep(250);
+    }
+    check('⌥↓ moves the selected row', await waitFor(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).indexOf('Tapping Etude No. 10') === 2`),
+      await js(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|')`));
+
+    // Drag a piece from Oeuvre onto the setlist in the sidebar
+    cmd('navigate', { view: 'oeuvre' });
+    await waitFor(`!!document.querySelector('.tracklist .tl-row:not(.tl-head)')`);
+    const sp = await js(`(() => {
+      const row = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')].find(r => r.textContent.includes('Night Window')).getBoundingClientRect();
+      const item = document.querySelector('.setlist-item').getBoundingClientRect();
+      return { from: { x: row.left + 300, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
+    })()`);
+    await nativeDrag(w, sp.from, sp.to);
+    check('dragging a piece onto a setlist adds it', await waitFor(`document.querySelector('.setlist-item .nav-sub') && ${'true'}`) && (await (async () => { await sleep(400); return collections.data.setlists[0].items.length === 6; })()));
+    cmd('navigate', { view: 'setlist', id: setlist.id });
+    await waitFor(`document.querySelectorAll('.tracklist .tl-row:not(.tl-head)').length === 6`);
+    await invokeRemoveLast();
 
     // Score views
     await js(`[...document.querySelectorAll('.tracklist .tl-row')].find(r => r.textContent.includes('Tapping Etude No. 2')).querySelector('.score-chip').click()`);

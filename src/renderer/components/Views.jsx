@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from 'preact/hooks';
-import { Play, Pause, Shuffle, Search, X, Briefcase, Download, Archive, Plus, Trash2, FolderPlus, CalendarDays, MapPin, ListMusic, EyeOff } from 'lucide-preact';
+import { Play, Pause, Shuffle, Search, X, Briefcase, Download, Archive, Plus, Trash2, FolderPlus, CalendarDays, MapPin, ListMusic, EyeOff, ArrowDownUp } from 'lucide-preact';
 import {
   library, libraryPieces, filters, setFilter, collections, setlistsById, pieceOrRef, invoke,
-  filterPieces, modal, route, navigate, selection,
+  filterPieces, modal, route, navigate, selection, portfolioDescending, saveUi,
 } from '../lib/store.js';
+import config from '../../config.mjs';
 import { player, playContext, togglePlay } from '../lib/player.js';
-import { byTitle, fmtTotal, fmtShowDate, plural } from '../lib/format.js';
+import { sortByTitle, fmtTotal, fmtShowDate, plural } from '../lib/format.js';
 import { addSourceFolders, addToSetlist, addToPortfolio, exportPieces, removeFromPortfolio } from '../lib/actions.js';
 import { TrackList } from './TrackList.jsx';
 import { LogoMark, Mosaic } from './Common.jsx';
@@ -146,6 +147,7 @@ export function OeuvreView() {
       <TrackList
         rows={rows}
         columns={['index', 'title', 'folder', 'format', 'modified', 'duration']}
+        sort={{ column: 'title', descending: config.library.sortDescending, hint: config.library.sortDescending ? 'Sorted by name, newest first (2026 before 2014)' : 'Sorted by name' }}
         selectKey="oeuvre"
         context={ctx}
         onPlayRow={play}
@@ -167,7 +169,9 @@ export function OeuvreView() {
 
 export function PortfolioView() {
   const entries = collections.value.portfolio;
-  const pieces = entries.map((e) => pieceOrRef(e.pieceId)).sort(byTitle);
+  const descending = portfolioDescending.value;
+  const pieces = sortByTitle(entries.map((e) => pieceOrRef(e.pieceId)), descending);
+  const flip = () => { portfolioDescending.value = !descending; saveUi(); };
   const q = filters.value.portfolio || '';
   const list = filterPieces(pieces, q);
   const [checked, setChecked] = useState(() => new Set());
@@ -222,11 +226,17 @@ export function PortfolioView() {
           </span>
         </div>
         <div class="action-spacer" />
+        <button type="button" class="sort-toggle" onClick={flip} disabled={pieces.length < 2}
+          title={descending ? 'Showing newest first. Click to show oldest first.' : 'Showing oldest first. Click to show newest first.'}>
+          <span>{descending ? 'Newest first' : 'Oldest first'}</span>
+          <ArrowDownUp size={16} />
+        </button>
         <FilterBox fkey="portfolio" placeholder="Search Portfolio" />
       </div>
       <TrackList
         rows={list.map((p) => ({ key: p.id, piece: p }))}
         columns={['check', 'index', 'title', 'folder', 'format', 'duration', 'remove']}
+        sort={{ column: 'title', descending, onFlip: flip, hint: descending ? 'Newest first. Click to flip.' : 'Oldest first. Click to flip.' }}
         selectKey="portfolio"
         context={ctx}
         onPlayRow={play}
@@ -374,7 +384,7 @@ export function SetlistView({ id }) {
         emptyState={
           q ? <Empty title={`Nothing in this setlist matches “${q}”`} />
             : (
-              <Empty icon={<ListMusic size={28} />} title="Build your running order" body="Drag pieces here from Oeuvre or Portfolio, then drag rows to reorder. Attach a score to any piece to open it while you practice.">
+              <Empty icon={<ListMusic size={28} />} title="Build your running order" body="Drag pieces here from Oeuvre or Portfolio, then drag rows by their handle to set the running order. Attach a score to any piece to open it while you practice.">
                 <button type="button" class="pill-btn" onClick={() => { modal.value = { type: 'addPieces', setlistId: s.id }; }}><Plus size={16} /> Add Pieces</button>
               </Empty>
             )

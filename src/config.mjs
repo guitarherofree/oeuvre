@@ -10,8 +10,11 @@ const config = {
   library: {
     // Audio file extensions scanned in source folders (lowercase, no dot).
     audioExtensions: ['mp3', 'm4a', 'aac', 'wav', 'flac'],
-    // Pieces are always listed by title (natural order: "Étude 2" before "Étude 10").
+    // Oeuvre lists pieces by name, newest first: names that start with a year put
+    // 2026 before 2014. Numbers compare naturally ("No. 10" is above "No. 2").
+    // Set sortDescending to false for A→Z / oldest first.
     sortBy: 'title',
+    sortDescending: true,
     // Image files used as artwork when a piece has none embedded.
     folderArtworkNames: ['cover', 'folder', 'front', 'artwork', 'album'],
     // Seconds to wait after a change in a watched folder before rescanning it.
@@ -23,6 +26,11 @@ const config = {
     previousRestartsAfterSeconds: 3,
     // Remember the queue and position between launches.
     restoreSessionOnLaunch: true,
+  },
+
+  portfolio: {
+    // Portfolio starts newest first; its flip button reverses this and is remembered.
+    sortDescending: true,
   },
 
   export: {

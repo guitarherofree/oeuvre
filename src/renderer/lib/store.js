@@ -1,6 +1,7 @@
 // App-wide state for the window, mirrored from the main process.
 import { signal, computed, batch } from '@preact/signals';
-import { byTitle, matchesQuery } from './format.js';
+import config from '../../config.mjs';
+import { sortByTitle, matchesQuery } from './format.js';
 
 export const api = window.oeuvre;
 export const invoke = (channel, ...args) => api.invoke(channel, ...args);
@@ -18,6 +19,7 @@ export const toasts = signal([]);
 export const exportState = signal(null);
 export const updateStatus = signal(null);
 export const sourcesMenuOpen = signal(false);
+export const portfolioDescending = signal(config.portfolio.sortDescending);
 export const dragging = signal(null); // { ids, from }
 
 const back = signal([]);
@@ -30,7 +32,7 @@ export const canGoForward = computed(() => forward.value.length > 0);
 export const piecesById = computed(() => new Map(library.value.pieces.map((p) => [p.id, p])));
 export const sourcesById = computed(() => new Map(library.value.sources.map((s) => [s.id, s])));
 export const visibleSourceIds = computed(() => new Set(library.value.sources.filter((s) => s.visible && !s.missing).map((s) => s.id)));
-export const libraryPieces = computed(() => library.value.pieces.filter((p) => visibleSourceIds.value.has(p.sourceId)).sort(byTitle));
+export const libraryPieces = computed(() => sortByTitle(library.value.pieces.filter((p) => visibleSourceIds.value.has(p.sourceId)), config.library.sortDescending));
 export const portfolioIds = computed(() => new Set(collections.value.portfolio.map((e) => e.pieceId)));
 export const setlistsById = computed(() => new Map(collections.value.setlists.map((s) => [s.id, s])));
 
@@ -119,7 +121,7 @@ export function saveUi() {
   clearTimeout(uiTimer);
   uiTimer = setTimeout(() => {
     const r = route.value.view === 'score' ? { view: 'oeuvre' } : route.value;
-    invoke('state:save', { ui: { route: r, queueOpen: queueOpen.value } });
+    invoke('state:save', { ui: { route: r, queueOpen: queueOpen.value, portfolioDescending: portfolioDescending.value } });
   }, 300);
 }
 

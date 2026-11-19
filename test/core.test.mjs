@@ -136,3 +136,13 @@ test('helpers', () => {
   assert.equal(compareVersions('1.0.0', '1.0.0-beta.2'), 1);
   assert.equal(compareVersions('1.0.0', 'v1.0.0'), 0);
 });
+
+test('Oeuvre order: by name, newest first (years descending, natural numbers)', async () => {
+  const { sortByTitle } = await import('../src/renderer/lib/format.js');
+  const list = ['2014 First Light', '2026 Tapping Etude', '2021-03 Night Window', '2021-11 Dawn', '2026 Tapping Etude No. 2', '2026 Tapping Etude No. 10']
+    .map((title, i) => ({ title, path: `/m/${i}` }));
+  assert.deepEqual(sortByTitle(list, true).map((p) => p.title), [
+    '2026 Tapping Etude No. 10', '2026 Tapping Etude No. 2', '2026 Tapping Etude', '2021-11 Dawn', '2021-03 Night Window', '2014 First Light',
+  ]);
+  assert.deepEqual(sortByTitle(list, false).map((p) => p.title)[0], '2014 First Light');
+});

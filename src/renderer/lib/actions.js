@@ -1,9 +1,9 @@
 // User actions shared by menus, buttons, shortcuts and drag-and-drop.
 import {
   invoke, navigate, toast, modal, collections, setlistsById, portfolioIds, piecesById, scoresFor,
-  exportState, updateStatus, route, libraryPieces, pieceOrRef,
+  exportState, updateStatus, route, libraryPieces, pieceOrRef, portfolioDescending,
 } from './store.js';
-import { plural, byTitle } from './format.js';
+import { plural, sortByTitle } from './format.js';
 import { addToQueue, playNext, playContext } from './player.js';
 
 export async function addSourceFolders() {
@@ -109,7 +109,8 @@ export async function showPieceMenu(ids, context) {
 export function playCurrentPage() {
   const r = route.value;
   if (r.view === 'portfolio') {
-    const ids = collections.value.portfolio.map((e) => e.pieceId).map(pieceOrRef).sort(byTitle).map((p) => p.id);
+    const ids = sortByTitle(collections.value.portfolio.map((e) => pieceOrRef(e.pieceId)), portfolioDescending.value)
+      .filter((p) => !p.missing).map((p) => p.id);
     if (ids.length) playContext({ type: 'portfolio', name: 'Portfolio', ids }, 0);
     return;
   }

@@ -29,10 +29,10 @@ Requires an Apple silicon Mac running macOS 12 or later.
 
 | Area | What it does |
 | --- | --- |
-| **Oeuvre** | Every piece from your checked source folders, always sorted by title. Search by title, folder, format or tags. Double-click a piece to play it and everything after it. |
+| **Oeuvre** | Every piece from your checked source folders, listed by name, newest first: names that start with a year put 2026 above 2014. Search by title, folder, format or tags. Double-click a piece to play it and everything after it. |
 | **Sources** (sidebar, and the **Sources** menu in the menu bar) | Each folder has a check mark. Unchecking a folder hides its pieces without removing it. Add and remove folders here. Removing a folder only removes it from Oeuvre. |
-| **Portfolio** | Your work samples. Check pieces, then **Export as MP3s…** (into a folder) or **Export as ZIP…**. Pieces that aren't MP3 are converted to 320 kbps MP3 during export; MP3s are copied unchanged. |
-| **Setlists** | One per show, with a name, date and venue. Pieces stay in running order: drag rows to rearrange them. The *Starts* column shows when each piece begins in the set. |
+| **Portfolio** | Your work samples, newest first. The **Newest first / Oldest first** button (or a click on the Title column) flips the order, and Oeuvre remembers your choice. Check pieces, then **Export as MP3s…** (into a folder) or **Export as ZIP…**. Pieces that aren't MP3 are converted to 320 kbps MP3 during export; MP3s are copied unchanged. |
+| **Setlists** | One per show, with a name, date and venue. Pieces stay in running order: drag a row by its ⠿ handle to move it, or select it and press ⌥↑ / ⌥↓. Drag pieces from Oeuvre or Portfolio onto a setlist to add them. The *Starts* column shows when each piece begins in the set. |
 | **Scores** | In a setlist, click **Attach…** on a piece, or right-click any piece and choose **Attach Score…**. You can attach PDFs, images (PNG, JPG, HEIC…) or any other file. PDFs and images open inside Oeuvre while the music keeps playing. Other files, such as MuseScore or Sibelius scores, open in their own app. You can also drop files onto an open score to attach them. |
 | **Player** | Play/pause, previous/next, seek, volume, shuffle, repeat (all or one), queue. The score button opens the current piece's score. |
 
@@ -59,6 +59,7 @@ Closing the window keeps the music playing, like Spotify. Quit with ⌘Q.
 | In a score: ← → or Page Up/Down | Previous / next page |
 | In a score: ⌘+ ⌘− ⌘0 | Zoom in / out / fit width |
 | In a list: ↑ ↓, Return, Delete | Move, play, remove from Portfolio/setlist |
+| In a setlist: ⌥↑ / ⌥↓ | Move the selected piece up / down |
 
 ## Where your data lives
 
@@ -79,7 +80,7 @@ If you rename or move a file within a source folder, Oeuvre matches it by name a
 There's no settings screen. Change these two files, then rebuild (`npm start` to try it, or publish a release):
 
 - **`src/renderer/theme.css`**: every color (accent green, backgrounds, text), the fonts, corner radius and row height.
-- **`src/config.mjs`**: the audio file types scanned, MP3 export bitrate, folder-artwork file names, how long "previous" waits before restarting a piece, which GitHub repository updates come from, and how often Oeuvre checks automatically (on launch, then every 24 hours).
+- **`src/config.mjs`**: the sort direction for Oeuvre and the starting direction for Portfolio, the audio file types scanned, MP3 export bitrate, folder-artwork file names, how long "previous" waits before restarting a piece, which GitHub repository updates come from, and how often Oeuvre checks automatically (on launch, then every 24 hours).
 
 ## Development
 

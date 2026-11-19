@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useLayoutEffect } from 'preact/hooks';
-import { Play, Clock3, X, GripVertical, FileMusic, Image as ImageIcon, FileText, Paperclip } from 'lucide-preact';
+import { Play, Clock3, X, GripVertical, FileMusic, Image as ImageIcon, FileText, Paperclip, ArrowDown, ArrowUp } from 'lucide-preact';
 import { selection, dragging, scoresFor, sourceName, invoke } from '../lib/store.js';
 import { player } from '../lib/player.js';
 import { fmtTime, fmtDate, formatLabel, formatDetail, plural } from '../lib/format.js';
@@ -9,7 +9,7 @@ import { DRAG_TYPE } from './Sidebar.jsx';
 
 const COLS = {
   check: { width: '36px', label: '' },
-  grip: { width: '18px', label: '' },
+  grip: { width: '20px', label: '' },
   index: { width: '44px', label: '#' },
   title: { width: 'minmax(220px, 5fr)', label: 'Title' },
   folder: { width: 'minmax(120px, 2.4fr)', label: 'Folder' },
@@ -61,7 +61,7 @@ function ScoreCell({ piece }) {
 export function TrackList({
   rows, columns, selectKey, context, onPlayRow, onRemoveRows,
   reorderable = false, onReorder, onDropPieces,
-  checked, onCheck, emptyState,
+  checked, onCheck, emptyState, sort,
 }) {
   const listRef = useRef(null);
   const width = useElementWidth(listRef);
@@ -112,7 +112,15 @@ export function TrackList({
   function onKeyDown(e) {
     if (!rows.length) return;
     const idx = rows.findIndex((r) => r.key === sel.ids[sel.ids.length - 1]);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && e.altKey && reorderable && onReorder && sel.ids.length) {
+      // ⌥↑ / ⌥↓ move the selected rows one place.
+      e.preventDefault();
+      const picked = rows.map((r, i) => (selected.has(r.key) ? i : -1)).filter((i) => i >= 0);
+      const first = picked[0];
+      const last = picked[picked.length - 1];
+      if (e.key === 'ArrowUp' && first > 0) onReorder(picked.map((i) => rows[i].key), first - 1);
+      if (e.key === 'ArrowDown' && last < rows.length - 1) onReorder(picked.map((i) => rows[i].key), last + 2);
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       const n = Math.max(0, Math.min(rows.length - 1, idx + (e.key === 'ArrowDown' ? 1 : -1)));
       if (e.shiftKey && sel.anchor) {
@@ -187,7 +195,7 @@ export function TrackList({
 
   return (
     <div
-      class={`tracklist ${dropIndex !== null ? 'is-dropping' : ''}`}
+      class={`tracklist ${dropIndex !== null ? 'is-dropping' : ''} ${reorderable ? 'is-reorderable' : ''}`}
       ref={listRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
@@ -206,6 +214,14 @@ export function TrackList({
                 label="Select all"
                 onChange={(v) => onCheck(rows.map((r) => r.piece.id), v)}
               />
+            ) : sort?.column === c ? (
+              sort.onFlip ? (
+                <button type="button" class="sort-head" title={sort.hint} onClick={sort.onFlip}>
+                  {COLS[c].label} {sort.descending ? <ArrowDown size={14} /> : <ArrowUp size={14} />}
+                </button>
+              ) : (
+                <span class="sort-head" title={sort.hint}>{COLS[c].label} {sort.descending ? <ArrowDown size={14} /> : <ArrowUp size={14} />}</span>
+              )
             ) : COLS[c].label}
           </div>
         ))}
@@ -235,7 +251,7 @@ export function TrackList({
                 case 'check':
                   return <div key={c} class="tl-cell col-check"><Checkbox checked={checked?.has(p.id)} label={`Select ${p.title}`} onChange={(v) => onCheck([p.id], v)} /></div>;
                 case 'grip':
-                  return <div key={c} class="tl-cell col-grip"><GripVertical size={14} /></div>;
+                  return <div key={c} class="tl-cell col-grip" title="Drag to reorder (or select and press ⌥↑ / ⌥↓)"><GripVertical size={16} /></div>;
                 case 'index':
                   return (
                     <div key={c} class="tl-cell col-index">
