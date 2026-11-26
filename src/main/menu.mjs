@@ -38,11 +38,12 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
       submenu: [
         { label: 'Add Source Folder…', accelerator: 'CmdOrCtrl+O', click: () => actions.addSources() },
         { label: 'New Setlist', accelerator: 'CmdOrCtrl+N', click: cmd('newSetlist') },
+        { label: 'Add Project', accelerator: 'Shift+CmdOrCtrl+N', click: cmd('newProject') },
         sep,
         { label: 'Export Portfolio as ZIP…', click: cmd('exportCollection', { name: 'portfolio', mode: 'zip' }) },
         { label: 'Export Portfolio as MP3 Files…', click: cmd('exportCollection', { name: 'portfolio', mode: 'folder' }) },
-        { label: 'Export Project as ZIP…', click: cmd('exportCollection', { name: 'project', mode: 'zip' }) },
-        { label: 'Export Project as WAV Files…', click: cmd('exportCollection', { name: 'project', mode: 'folder' }) },
+        { label: 'Export Current Project as ZIP…', click: cmd('exportCollection', { name: 'project', mode: 'zip' }) },
+        { label: 'Export Current Project as WAV Files…', click: cmd('exportCollection', { name: 'project', mode: 'folder' }) },
         sep,
         { role: 'close' },
       ],
@@ -91,7 +92,6 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
       submenu: [
         { label: 'Oeuvre', accelerator: 'CmdOrCtrl+1', click: cmd('navigate', { view: 'oeuvre' }) },
         { label: 'Portfolio', accelerator: 'CmdOrCtrl+2', click: cmd('navigate', { view: 'portfolio' }) },
-        { label: 'Project', accelerator: 'CmdOrCtrl+3', click: cmd('navigate', { view: 'project' }) },
         sep,
         { label: 'Find', accelerator: 'CmdOrCtrl+F', click: cmd('focusSearch') },
         { label: 'Show Queue', accelerator: 'Alt+CmdOrCtrl+Q', click: cmd('toggleQueue') },
@@ -122,7 +122,7 @@ export function buildAppMenu({ library, player = {}, send, actions }) {
 }
 
 /** Native right-click menu for one or more pieces. Resolves with the chosen action (or null). */
-export function pieceContextMenu(win, { pieces, setlists, inLists = {}, context, hasScore }) {
+export function pieceContextMenu(win, { pieces, setlists, projects = [], inLists = {}, context, hasScore }) {
   return new Promise((resolve) => {
     const pick = (action, arg) => () => resolve({ action, arg });
     const many = pieces.length > 1;
@@ -134,9 +134,15 @@ export function pieceContextMenu(win, { pieces, setlists, inLists = {}, context,
       inLists.portfolio
         ? { label: 'Remove from Portfolio', click: pick('listRemove', 'portfolio') }
         : { label: 'Add to Portfolio', click: pick('listAdd', 'portfolio') },
-      inLists.project
-        ? { label: 'Remove from Project', click: pick('listRemove', 'project') }
-        : { label: 'Add to Project', click: pick('listAdd', 'project') },
+      {
+        label: 'Add to Project',
+        submenu: [
+          { label: 'New Project', click: pick('projectNew') },
+          ...(projects.length ? [{ type: 'separator' }] : []),
+          // A check mark means every selected piece is already in that project; choosing it removes them.
+          ...projects.map((p) => ({ label: p.name, type: 'checkbox', checked: p.hasAll, click: pick('projectToggle', { id: p.id, hasAll: p.hasAll }) })),
+        ],
+      },
       {
         label: 'Add to Setlist',
         submenu: [
@@ -146,6 +152,9 @@ export function pieceContextMenu(win, { pieces, setlists, inLists = {}, context,
         ],
       },
     ];
+    if (context?.type === 'project' && context.id) {
+      items.push({ label: 'Remove from This Project', click: pick('projectRemove', context.id) });
+    }
     if (context?.type === 'setlist') {
       items.push({ label: many ? 'Remove from This Setlist' : 'Remove from This Setlist', click: pick('setlistRemove') });
     }

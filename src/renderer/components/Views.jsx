@@ -2,12 +2,12 @@ import { useState, useRef, useEffect } from 'preact/hooks';
 import { Play, Pause, Shuffle, Search, X, Briefcase, Download, Archive, Plus, Trash2, FolderPlus, CalendarDays, MapPin, ListMusic, EyeOff, ArrowDownUp, AudioWaveform } from 'lucide-preact';
 import {
   library, libraryPieces, filters, setFilter, collections, setlistsById, pieceOrRef, invoke,
-  filterPieces, modal, route, navigate, selection, listDescending, saveUi, LISTS,
+  filterPieces, modal, route, navigate, selection, listDescending, saveUi, LISTS, projectsById, isDescending,
 } from '../lib/store.js';
 import config from '../../config.mjs';
 import { player, playContext, togglePlay } from '../lib/player.js';
 import { sortByTitle, fmtTotal, fmtShowDate, plural } from '../lib/format.js';
-import { addSourceFolders, addToSetlist, addToList, exportPieces, removeFromList } from '../lib/actions.js';
+import { addSourceFolders, addToSetlist, addToList, exportPieces, removeFromList, addToProject, removeFromProject } from '../lib/actions.js';
 import { TrackList } from './TrackList.jsx';
 import { LogoMark, Mosaic } from './Common.jsx';
 
@@ -165,78 +165,86 @@ export function OeuvreView() {
   );
 }
 
-// ---------------------------------------------------------------- Portfolio and Project
+// ---------------------------------------------------------------- Portfolio and projects
 
-const LIST_COPY = {
-  portfolio: {
-    kind: 'Collection',
-    glyph: <Briefcase size={84} strokeWidth={1.5} />,
-    empty: 'Your Portfolio is empty',
-    emptyBody: 'Collect your best work samples here. Right-click a piece and choose Add to Portfolio, or drag pieces onto Portfolio in the sidebar.',
-  },
-  project: {
-    kind: 'Collection',
-    glyph: <AudioWaveform size={84} strokeWidth={1.5} />,
-    empty: 'Your Project is empty',
-    emptyBody: 'Gather the pieces you\'re working on and export them as WAV files. Right-click a piece and choose Add to Project, or drag pieces onto Project in the sidebar.',
-  },
-};
-
-/** Portfolio (exports MP3) and Project (exports WAV) share this page. */
-export function ListView({ name }) {
-  const meta = LISTS[name];
-  const copy = LIST_COPY[name];
-  const FORMAT = meta.format.toUpperCase();
-  const entries = collections.value[name] || [];
-  const descending = listDescending.value[name];
-  const pieces = sortByTitle(entries.map((e) => pieceOrRef(e.pieceId)), descending);
-  const flip = () => { listDescending.value = { ...listDescending.value, [name]: !descending }; saveUi(); };
-  const q = filters.value[name] || '';
-  const list = filterPieces(pieces, q);
+/**
+ * Portfolio (one list, exports MP3) and projects (many lists, export WAV) share this page.
+ *   <ListView name="portfolio" />   or   <ListView name="project" id={projectId} />
+ */
+export function ListView({ name, id }) {
+  const isProject = name === 'project';
+  const project = isProject ? projectsById.value.get(id) : null;
   const [checked, setChecked] = useState(() => new Set());
+
+  if (isProject && !project) {
+    return (
+      <div class="view">
+        <Empty title="This project no longer exists">
+          <button type="button" class="pill-btn" onClick={() => navigate({ view: 'oeuvre' }, { replace: true })}>Go to Oeuvre</button>
+        </Empty>
+      </div>
+    );
+  }
+
+  const label = isProject ? project.name : LISTS.portfolio.label;
+  const format = isProject ? 'wav' : LISTS.portfolio.format;
+  const FORMAT = format.toUpperCase();
+  const key = isProject ? project.id : 'portfolio';
+  const viewKey = isProject ? `project:${project.id}` : 'portfolio';
+  const entries = isProject ? project.items : collections.value.portfolio;
+  const add = (ids) => (isProject ? addToProject(project.id, ids) : addToList('portfolio', ids));
+  const remove = (ids) => (isProject ? removeFromProject(project.id, ids) : removeFromList('portfolio', ids));
+
+  const descending = isDescending(key);
+  const pieces = sortByTitle(entries.map((e) => pieceOrRef(e.pieceId)), descending);
+  const flip = () => { listDescending.value = { ...listDescending.value, [key]: !descending }; saveUi(); };
+  const q = filters.value[viewKey] || '';
+  const list = filterPieces(pieces, q);
   const valid = new Set(pieces.map((p) => p.id));
-  const checkedIds = [...checked].filter((id) => valid.has(id));
-  const exportable = checkedIds.filter((id) => !pieceOrRef(id).missing);
-  const toConvert = exportable.filter((id) => pieceOrRef(id).ext !== meta.format).length;
+  const exportable = [...checked].filter((pid) => valid.has(pid) && !pieceOrRef(pid).missing);
+  const toConvert = exportable.filter((pid) => pieceOrRef(pid).ext !== format).length;
 
   const onCheck = (ids, on) => {
     setChecked((prev) => {
       const next = new Set(prev);
-      for (const id of ids) on ? next.add(id) : next.delete(id);
+      for (const pid of ids) on ? next.add(pid) : next.delete(pid);
       return next;
     });
   };
 
-  const ctx = { type: name, name: meta.label };
+  const ctx = isProject ? { type: 'project', id: project.id, name: project.name } : { type: 'portfolio', name: 'Portfolio' };
   const playable = list.filter((p) => !p.missing);
   const play = (i) => {
     const target = list[i];
     playContext({ ...ctx, ids: playable.map((p) => p.id) }, Math.max(0, playable.indexOf(target)));
   };
   const convertNote = toConvert ? `${plural(toConvert, 'piece')} will be converted to ${FORMAT}` : `All selected pieces are already ${FORMAT}`;
+  const target = { label, format };
+  const glyph = isProject ? <AudioWaveform size={84} strokeWidth={1.5} /> : <Briefcase size={84} strokeWidth={1.5} />;
 
   return (
     <div class="view">
       <Header
-        kind={copy.kind}
-        title={meta.label}
-        art={<Mosaic pieces={pieces} size={200} glyph={pieces.length < 4 ? copy.glyph : null} />}
+        kind={isProject ? 'Project' : 'Collection'}
+        title={label}
+        titleEditor={isProject ? <EditableTitle value={project.name} onSave={(n) => invoke('project:rename', project.id, n)} /> : null}
+        art={<Mosaic pieces={pieces} size={200} glyph={pieces.length < 4 ? glyph : null} />}
         meta={
           <>
-            <span>{plural(pieces.length, meta.noun)}</span>
+            <span>{plural(pieces.length, isProject ? 'piece' : LISTS.portfolio.noun)}</span>
             <span>{fmtTotal(totalDuration(pieces))}</span>
             <span>Exports {FORMAT}</span>
           </>
         }
       />
       <div class="action-row">
-        <PlayButton isThis={isContext(name)} disabled={!playable.length} onPlay={() => play(0)} />
+        <PlayButton isThis={isContext(ctx.type, isProject ? project.id : undefined)} disabled={!playable.length} onPlay={() => play(0)} />
         <div class="export-group">
-          <button type="button" class="pill-btn" disabled={!exportable.length} onClick={() => exportPieces(exportable, 'folder', name)}
+          <button type="button" class="pill-btn" disabled={!exportable.length} onClick={() => exportPieces(exportable, 'folder', target)}
             title={toConvert ? convertNote : `Copy the ${FORMAT} files to a folder`}>
             <Download size={16} /> Export {exportable.length ? exportable.length : ''} as {FORMAT}s…
           </button>
-          <button type="button" class="pill-btn" disabled={!exportable.length} onClick={() => exportPieces(exportable, 'zip', name)}
+          <button type="button" class="pill-btn" disabled={!exportable.length} onClick={() => exportPieces(exportable, 'zip', target)}
             title={toConvert ? convertNote : `One ZIP of ${FORMAT} files`}>
             <Archive size={16} /> Export as ZIP…
           </button>
@@ -244,36 +252,45 @@ export function ListView({ name }) {
             {exportable.length ? convertNote : pieces.length ? 'Check pieces to export them' : ''}
           </span>
         </div>
+        {isProject ? (
+          <button type="button" class="icon-btn action-icon" title="Delete project" aria-label="Delete project"
+            onClick={async () => { if (await invoke('project:delete', project.id)) navigate({ view: 'oeuvre' }, { replace: true }); }}>
+            <Trash2 size={20} />
+          </button>
+        ) : null}
         <div class="action-spacer" />
         <button type="button" class="sort-toggle" onClick={flip} disabled={pieces.length < 2}
           title={descending ? 'Showing newest first. Click to show oldest first.' : 'Showing oldest first. Click to show newest first.'}>
           <span>{descending ? 'Newest first' : 'Oldest first'}</span>
           <ArrowDownUp size={16} />
         </button>
-        <FilterBox fkey={name} placeholder={`Search ${meta.label}`} />
+        <FilterBox fkey={viewKey} placeholder={`Search ${label}`} />
       </div>
       <TrackList
         rows={list.map((p) => ({ key: p.id, piece: p }))}
         columns={['check', 'index', 'title', 'folder', 'format', 'duration', 'remove']}
         sort={{ column: 'title', descending, onFlip: flip, hint: descending ? 'Newest first. Click to flip.' : 'Oldest first. Click to flip.' }}
-        selectKey={name}
+        selectKey={viewKey}
         context={ctx}
         onPlayRow={play}
         checked={checked}
         onCheck={onCheck}
-        onRemoveRows={(rows) => removeFromList(name, rows.map((r) => r.piece.id))}
-        onDropPieces={(ids) => addToList(name, ids)}
+        onRemoveRows={(rows) => remove(rows.map((r) => r.piece.id))}
+        onDropPieces={(ids) => add(ids)}
         emptyState={
-          q ? <Empty title={`Nothing in ${meta.label} matches “${q}”`} />
-            : <Empty icon={name === 'project' ? <AudioWaveform size={28} /> : <Briefcase size={28} />} title={copy.empty} body={copy.emptyBody} />
+          q ? <Empty title={`Nothing in ${label} matches “${q}”`} />
+            : isProject ? (
+              <Empty icon={<AudioWaveform size={28} />} title={`${label} is empty`}
+                body="Drag pieces here or onto this project in the sidebar, or right-click a piece and choose Add to Project. Check pieces to export them as WAV files." />
+            ) : (
+              <Empty icon={<Briefcase size={28} />} title="Your Portfolio is empty"
+                body="Collect your best work samples here. Right-click a piece and choose Add to Portfolio, or drag pieces onto Portfolio in the sidebar." />
+            )
         }
       />
     </div>
   );
 }
-
-export const PortfolioView = () => <ListView name="portfolio" />;
-export const ProjectView = () => <ListView name="project" />;
 
 // ---------------------------------------------------------------- Setlist
 
@@ -406,7 +423,7 @@ export function SetlistView({ id }) {
         emptyState={
           q ? <Empty title={`Nothing in this setlist matches “${q}”`} />
             : (
-              <Empty icon={<ListMusic size={28} />} title="Build your running order" body="Drag pieces here from Oeuvre, Portfolio or Project, then drag rows by their handle to set the running order. Attach a score to any piece to open it while you practice.">
+              <Empty icon={<ListMusic size={28} />} title="Build your running order" body="Drag pieces here from Oeuvre, Portfolio or a project, then drag rows by their handle to set the running order. Attach a score to any piece to open it while you practice.">
                 <button type="button" class="pill-btn" onClick={() => { modal.value = { type: 'addPieces', setlistId: s.id }; }}><Plus size={16} /> Add Pieces</button>
               </Empty>
             )

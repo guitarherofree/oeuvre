@@ -1,6 +1,6 @@
 # Oeuvre
 
-A Mac music player for listening to and organizing your own work. It plays audio files from folders on your Mac (MP3, AAC/M4A, WAV, FLAC), keeps a **Portfolio** of work samples you can export as MP3s and a **Project** you can export as WAVs, and builds **Setlists** with scores you can open while you listen or practice.
+A Mac music player for listening to and organizing your own work. It plays audio files from folders on your Mac (MP3, AAC/M4A, WAV, FLAC), keeps a **Portfolio** of work samples you can export as MP3s and **Projects** (as many collections as you like) that export as WAVs, and builds **Setlists** with scores you can open while you listen or practice.
 
 Oeuvre never moves, renames or edits your audio files.
 
@@ -32,12 +32,12 @@ Requires an Apple silicon Mac running macOS 12 or later.
 | **Oeuvre** | Every piece from your checked source folders, listed by name, newest first: names that start with a year put 2026 above 2014. Search by title, folder, format or tags. Double-click a piece to play it and everything after it. |
 | **Sources** (sidebar, and the **Sources** menu in the menu bar) | Each folder has a check mark. Unchecking a folder hides its pieces without removing it. Add and remove folders here. Removing a folder only removes it from Oeuvre. |
 | **Portfolio** | Your work samples, newest first. The **Newest first / Oldest first** button (or a click on the Title column) flips the order, and Oeuvre remembers your choice. Check pieces, then **Export as MP3s…** (into a folder) or **Export as ZIP…**. Pieces that aren't MP3 are converted to 320 kbps MP3 during export; MP3s are copied unchanged. |
-| **Project** | Works the same way as Portfolio, but exports **WAV**: **Export as WAVs…** into a folder, or **Export as ZIP…**. WAV pieces are copied unchanged. FLAC keeps its own sample rate and bit depth. MP3 and AAC are decoded at their own sample rate to 24-bit WAV. |
+| **Projects** | Collections you make yourself. **Add Project** in the sidebar (or ⇧⌘N) creates **Collection 001**, then **Collection 002**, and so on: each new one is one past the highest existing number. Click a project's name to rename it; the trash button deletes it (its pieces stay in your library). Each project works like Portfolio but exports **WAV**: **Export as WAVs…** into a folder, or **Export as ZIP…** named after the project. WAV pieces are copied unchanged. FLAC keeps its own sample rate and bit depth. MP3 and AAC are decoded at their own sample rate to 24-bit WAV. |
 | **Setlists** | One per show, with a name, date and venue. Pieces stay in running order: drag a row by its ⠿ handle to move it, or select it and press ⌥↑ / ⌥↓. Drag pieces from Oeuvre or Portfolio onto a setlist to add them. The *Starts* column shows when each piece begins in the set. |
 | **Scores** | In a setlist, click **Attach…** on a piece, or right-click any piece and choose **Attach Score…**. You can attach PDFs, images (PNG, JPG, HEIC…) or any other file. PDFs and images open inside Oeuvre while the music keeps playing. Other files, such as MuseScore or Sibelius scores, open in their own app. You can also drop files onto an open score to attach them. |
 | **Player** | Play/pause, previous/next, seek, volume, shuffle, repeat (all or one), queue. The score button opens the current piece's score. |
 
-Right-click any piece for **Play Next**, **Add to Queue**, **Add to Portfolio**, **Add to Project**, **Add to Setlist**, **Attach Score…** and **Show in Finder**. You can also drag pieces onto Portfolio, Project or a setlist in the sidebar.
+Right-click any piece for **Play Next**, **Add to Queue**, **Add to Portfolio**, **Add to Project ›** (a check mark shows the projects that already have them), **Add to Setlist**, **Attach Score…** and **Show in Finder**. You can also drag pieces onto Portfolio, a project or a setlist in the sidebar, or onto **Add Project** to start a new project with them.
 
 Closing the window keeps the music playing, like Spotify. Quit with ⌘Q.
 
@@ -51,8 +51,9 @@ Closing the window keeps the music playing, like Spotify. Quit with ⌘Q.
 | ⌘S | Shuffle on/off |
 | ⌘R | Cycle repeat: off → all → one |
 | ⌘F | Search |
-| ⌘1 / ⌘2 / ⌘3 | Oeuvre / Portfolio / Project |
+| ⌘1 / ⌘2 | Oeuvre / Portfolio |
 | ⌘N | New setlist |
+| ⇧⌘N | Add project |
 | ⌘O | Add source folder |
 | ⌥⌘Q | Show queue |
 | ⌥⌘S | Show the current piece's score |
@@ -69,7 +70,7 @@ Everything is in `~/Library/Application Support/Oeuvre/`. To open that folder, u
 | File | Contents |
 | --- | --- |
 | `library.json` | Source folders, whether each is checked, and a cache of each piece's duration and tags so launch is fast. Folders are rescanned on launch and watched for changes. |
-| `collections.json` | Portfolio, Project, setlists, and which scores belong to which piece. |
+| `collections.json` | Portfolio, projects, setlists, and which scores belong to which piece. |
 | `state.json` | Volume, shuffle/repeat, queue and position, window size, and when updates were last checked. |
 | `scores/` | Oeuvre's own copies of imported scores, so a score keeps working if you move or delete the original. |
 | `Cache/artwork/` | Artwork read from your files, plus `cover.jpg` / `folder.jpg` images found in your folders. |
@@ -81,7 +82,7 @@ If you rename or move a file within a source folder, Oeuvre matches it by name a
 There's no settings screen. Change these two files, then rebuild (`npm start` to try it, or publish a release):
 
 - **`src/renderer/theme.css`**: every color (accent green, backgrounds, text), the fonts, corner radius and row height.
-- **`src/config.mjs`**: the sort direction for Oeuvre and the starting direction for Portfolio and Project, the audio file types scanned, MP3 export bitrate, the bit depth for WAVs made from MP3/AAC, folder-artwork file names, how long "previous" waits before restarting a piece, which GitHub repository updates come from, and how often Oeuvre checks automatically (on launch, then every 24 hours).
+- **`src/config.mjs`**: the sort direction for Oeuvre and the starting direction for Portfolio and projects, the audio file types scanned, MP3 export bitrate, the bit depth for WAVs made from MP3/AAC, folder-artwork file names, how long "previous" waits before restarting a piece, which GitHub repository updates come from, and how often Oeuvre checks automatically (on launch, then every 24 hours).
 
 ## Development
 

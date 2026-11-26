@@ -15,8 +15,17 @@ const PDF_EXTS = new Set(config.scores.pdfExtensions);
 const IMAGE_EXTS = new Set(config.scores.imageExtensions);
 const NEEDS_CONVERSION = new Set(['heic', 'heif']);
 
-/** Simple lists of pieces: Portfolio (exports MP3) and Project (exports WAV). */
-export const LISTS = ['portfolio', 'project'];
+/** Simple lists of pieces. Portfolio exports MP3; projects (below) export WAV. */
+export const LISTS = ['portfolio'];
+
+const PROJECT_NAME = /^collection\s+0*(\d+)$/i;
+
+/** Next default project name: one past the highest existing "Collection NNN" (001 when there are none). */
+export function nextProjectName(projects) {
+  const nums = projects.map((p) => PROJECT_NAME.exec(String(p.name || '').trim())).filter(Boolean).map((m) => parseInt(m[1], 10));
+  const n = nums.length ? Math.max(...nums) + 1 : 1;
+  return `Collection ${String(n).padStart(3, '0')}`;
+}
 
 export function scoreKindFor(file) {
   const ext = path.extname(file).slice(1).toLowerCase();
@@ -29,8 +38,18 @@ export class Collections extends EventEmitter {
   constructor({ file, scoresDir }) {
     super();
     this.scoresDir = scoresDir;
-    this.store = new JsonFile(file, { version: 1, portfolio: [], project: [], setlists: [], scores: {}, refs: {} });
+    this.store = new JsonFile(file, { version: 1, portfolio: [], projects: [], setlists: [], scores: {}, refs: {} });
     for (const name of LISTS) if (!Array.isArray(this.store.data[name])) this.store.data[name] = [];
+    if (!Array.isArray(this.store.data.projects)) this.store.data.projects = [];
+    // 1.2.0 had a single "Project" list: it becomes the first collection.
+    if (Array.isArray(this.store.data.project)) {
+      const old = this.store.data.project;
+      delete this.store.data.project;
+      if (old.length) {
+        this.store.data.projects.unshift({ id: rid('pj_'), name: nextProjectName(this.store.data.projects), createdAt: Date.now(), items: old });
+      }
+      this.store.save();
+    }
     fs.mkdirSync(scoresDir, { recursive: true });
     this.timer = null;
   }
@@ -90,6 +109,70 @@ export class Collections extends EventEmitter {
 
   portfolioAdd(pieces) { return this.listAdd('portfolio', pieces); }
   portfolioRemove(pieceIds) { return this.listRemove('portfolio', pieceIds); }
+
+  // ---------------------------------------------------------------- projects (export WAV)
+
+  #project(id) {
+    const p = this.data.projects.find((x) => x.id === id);
+    if (!p) throw new Error('Project not found');
+    return p;
+  }
+
+  projectCreate({ name, pieces = [] } = {}) {
+    const project = {
+      id: rid('pj_'),
+      name: String(name || '').trim() || nextProjectName(this.data.projects),
+      createdAt: Date.now(),
+      items: [],
+    };
+    this.data.projects.push(project);
+    if (pieces.length) this.projectAdd(project.id, pieces);
+    this.#changed();
+    return project;
+  }
+
+  projectRename(id, name) {
+    const p = this.#project(id);
+    p.name = String(name || '').trim() || p.name;
+    this.#changed();
+    return p;
+  }
+
+  projectDelete(id) {
+    this.data.projects = this.data.projects.filter((p) => p.id !== id);
+    this.#changed();
+  }
+
+  projectAdd(id, pieces) {
+    const p = this.#project(id);
+    const have = new Set(p.items.map((e) => e.pieceId));
+    let added = 0;
+    for (const piece of pieces) {
+      if (!piece || have.has(piece.id)) continue;
+      p.items.push({ pieceId: piece.id, addedAt: Date.now() });
+      have.add(piece.id);
+      added++;
+    }
+    this.#remember(pieces);
+    this.#changed();
+    return added;
+  }
+
+  projectRemove(id, pieceIds) {
+    const p = this.#project(id);
+    const drop = new Set(pieceIds);
+    const before = p.items.length;
+    p.items = p.items.filter((e) => !drop.has(e.pieceId));
+    this.#changed();
+    return before - p.items.length;
+  }
+
+  projectHasAll(id, pieceIds) {
+    const p = this.data.projects.find((x) => x.id === id);
+    if (!p || !pieceIds.length) return false;
+    const have = new Set(p.items.map((e) => e.pieceId));
+    return pieceIds.every((pid) => have.has(pid));
+  }
 
   // ---------------------------------------------------------------- setlists
 
@@ -251,6 +334,7 @@ export class Collections extends EventEmitter {
   relink(map) {
     let touched = false;
     for (const name of LISTS) for (const e of this.data[name]) if (map[e.pieceId]) { e.pieceId = map[e.pieceId]; touched = true; }
+    for (const p of this.data.projects) for (const e of p.items) if (map[e.pieceId]) { e.pieceId = map[e.pieceId]; touched = true; }
     for (const s of this.data.setlists) for (const it of s.items) if (map[it.pieceId]) { it.pieceId = map[it.pieceId]; touched = true; }
     for (const [oldId, newId] of Object.entries(map)) {
       if (this.data.scores[oldId]) {

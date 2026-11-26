@@ -8,7 +8,7 @@ import config from '../config.mjs';
 import { JsonFile } from './store.mjs';
 import { Library } from './library.mjs';
 import { Collections, LISTS } from './collections.mjs';
-import { exportPieces } from './exporter.mjs';
+import { exportPieces, safeFileName } from './exporter.mjs';
 import { Updater } from './updater.mjs';
 import { registerSchemes, handleSchemes } from './protocol.mjs';
 import { buildAppMenu, pieceContextMenu } from './menu.mjs';
@@ -241,6 +241,7 @@ function registerIpc() {
     return pieceContextMenu(win, {
       pieces: ids,
       setlists: collections.data.setlists,
+      projects: collections.data.projects.map((p) => ({ id: p.id, name: p.name, hasAll: collections.projectHasAll(p.id, ids) })),
       inLists,
       context,
       hasScore: ids.length === 1 && collections.scoresFor(ids[0]).length > 0,
@@ -251,6 +252,22 @@ function registerIpc() {
   const piecesOrRefs = (ids) => (ids || []).map((id) => library.getPiece(id) || (collections.data.refs[id] && { id, ...collections.data.refs[id] })).filter(Boolean);
   handle('collection:add', (name, ids) => collections.listAdd(name, piecesOrRefs(ids)));
   handle('collection:remove', (name, ids) => collections.listRemove(name, ids));
+  handle('project:create', ({ name, pieceIds } = {}) => collections.projectCreate({ name, pieces: piecesOrRefs(pieceIds) }));
+  handle('project:rename', (id, name) => collections.projectRename(id, name));
+  handle('project:add', (id, ids) => collections.projectAdd(id, piecesOrRefs(ids)));
+  handle('project:remove', (id, ids) => collections.projectRemove(id, ids));
+  handle('project:delete', async (id) => {
+    const p = collections.data.projects.find((x) => x.id === id);
+    if (!p) return false;
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'warning', buttons: ['Delete', 'Cancel'], defaultId: 0, cancelId: 1,
+      message: `Delete the project “${p.name}”?`,
+      detail: 'Its pieces stay in your library. Nothing is deleted from your Mac.',
+    });
+    if (response !== 0) return false;
+    collections.projectDelete(id);
+    return true;
+  });
   handle('setlist:create', ({ name, pieceIds } = {}) => {
     const s = collections.setlistCreate({ name });
     if (pieceIds?.length) collections.setlistAdd(s.id, piecesOrRefs(pieceIds));
@@ -334,7 +351,7 @@ function registerIpc() {
     if (mode === 'zip') {
       const res = await dialog.showSaveDialog(win, {
         title: `Export ${label} as ZIP`,
-        defaultPath: path.join(app.getPath('downloads'), `Oeuvre ${label} ${stamp}.zip`),
+        defaultPath: path.join(app.getPath('downloads'), `${label === 'Portfolio' ? 'Oeuvre Portfolio' : safeFileName(label)} ${stamp}.zip`),
         filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
       });
       if (res.canceled || !res.filePath) return { canceled: true };

@@ -1,7 +1,7 @@
 // User actions shared by menus, buttons, shortcuts and drag-and-drop.
 import {
   invoke, navigate, toast, modal, collections, setlistsById, portfolioIds, piecesById, scoresFor,
-  exportState, updateStatus, route, libraryPieces, pieceOrRef, listDescending, LISTS,
+  exportState, updateStatus, route, libraryPieces, pieceOrRef, LISTS, projectsById, isDescending,
 } from './store.js';
 import { plural, sortByTitle } from './format.js';
 import { addToQueue, playNext, playContext } from './player.js';
@@ -24,6 +24,26 @@ export async function removeFromList(name, ids) {
 
 export const addToPortfolio = (ids) => addToList('portfolio', ids);
 export const removeFromPortfolio = (ids) => removeFromList('portfolio', ids);
+
+/** Creates "Collection 00N" (optionally with pieces) and opens it. */
+export async function createProject(pieceIds = []) {
+  const p = await invoke('project:create', { pieceIds });
+  navigate({ view: 'project', id: p.id });
+  toast(pieceIds.length ? `Created “${p.name}” with ${plural(pieceIds.length, 'piece')}` : `Created “${p.name}”`);
+  return p;
+}
+
+export async function addToProject(id, ids) {
+  const name = projectsById.value.get(id)?.name || 'project';
+  const added = await invoke('project:add', id, ids);
+  if (added) toast(`Added ${plural(added, 'piece')} to ${name}`, { action: 'View', onAction: () => navigate({ view: 'project', id }) });
+  else toast(ids.length === 1 ? `Already in ${name}` : `Those pieces are already in ${name}`);
+}
+
+export async function removeFromProject(id, ids) {
+  const n = await invoke('project:remove', id, ids);
+  if (n) toast(`Removed ${plural(n, 'piece')} from ${projectsById.value.get(id)?.name || 'the project'}`);
+}
 
 export function promptNewSetlist(pieceIds = []) {
   modal.value = { type: 'newSetlist', pieceIds };
@@ -54,8 +74,8 @@ export function openScore(pieceId, scoreId = null) {
   navigate({ view: 'score', pieceId, scoreId: scoreId || list[0].id, from });
 }
 
-export async function exportPieces(ids, mode, listName = 'portfolio') {
-  const { label, format } = LISTS[listName];
+/** target: { label, format } — Portfolio is { 'Portfolio', 'mp3' }, a project is { its name, 'wav' }. */
+export async function exportPieces(ids, mode, { label = 'Portfolio', format = 'mp3' } = {}) {
   if (!ids.length) {
     toast(`Select the ${label} pieces to export first.`);
     return;
@@ -93,6 +113,9 @@ export async function runPieceAction(choice, ids, context) {
       break;
     case 'listAdd': return addToList(arg, ids);
     case 'listRemove': return removeFromList(arg, ids);
+    case 'projectNew': return createProject(ids);
+    case 'projectToggle': return arg.hasAll ? removeFromProject(arg.id, ids) : addToProject(arg.id, ids);
+    case 'projectRemove': return removeFromProject(arg, ids);
     case 'setlistNew': return promptNewSetlist(ids);
     case 'setlistAdd': return addToSetlist(arg, ids);
     case 'setlistRemove':
@@ -114,9 +137,15 @@ export async function showPieceMenu(ids, context) {
 export function playCurrentPage() {
   const r = route.value;
   if (LISTS[r.view]) {
-    const ids = sortByTitle(collections.value[r.view].map((e) => pieceOrRef(e.pieceId)), listDescending.value[r.view])
+    const ids = sortByTitle(collections.value[r.view].map((e) => pieceOrRef(e.pieceId)), isDescending(r.view))
       .filter((p) => !p.missing).map((p) => p.id);
     if (ids.length) playContext({ type: r.view, name: LISTS[r.view].label, ids }, 0);
+    return;
+  }
+  if (r.view === 'project') {
+    const p = projectsById.value.get(r.id);
+    const ids = p ? sortByTitle(p.items.map((e) => pieceOrRef(e.pieceId)), isDescending(p.id)).filter((x) => !x.missing).map((x) => x.id) : [];
+    if (ids.length) playContext({ type: 'project', id: p.id, name: p.name, ids }, 0);
     return;
   }
   if (r.view === 'setlist') {

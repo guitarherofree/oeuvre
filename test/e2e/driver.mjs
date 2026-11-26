@@ -218,24 +218,53 @@ export async function run({ app, win, library, collections, updater, state }) {
     await js(`document.querySelector('.dialog .primary-btn').click()`);
     await sleep(200);
 
-    // Project: same as Portfolio, exports WAV
-    check('Project tab in the sidebar', await js(`[...document.querySelectorAll('.nav-item .nav-label')].some(e => e.textContent === 'Project')`));
+    // Projects: "Add Project" makes Collection 001, 002, …; each works like Portfolio and exports WAV
+    const navTexts = () => js(`[...document.querySelectorAll('.sidebar .nav-label')].map(e => e.textContent)`);
+    check('no single Project tab any more', !(await navTexts()).includes('Project'));
+    check('Add Project shows the next name', (await js(`document.querySelector('.add-project .nav-sub').textContent`)) === 'Next: Collection 001');
+    await js(`document.querySelector('.add-project').click()`);
+    check('Add Project creates and opens Collection 001', await waitFor(`document.querySelector('.view-kind')?.textContent === 'Project' && document.querySelector('.view-title')?.textContent === 'Collection 001'`));
+    await js(`[...document.querySelectorAll('.setlists-head')].find(h => h.textContent.includes('Projects')).querySelector('button').click()`);
+    check('the + button makes Collection 002', await waitFor(`document.querySelector('.view-title')?.textContent === 'Collection 002'`));
+    // rename 002
+    await js(`document.querySelector('.view-title').click()`);
+    await sleep(150);
+    await js(`(() => { const i = document.querySelector('.view-title-input'); i.value = 'Spring Demos'; i.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await sleep(150);
+    await js(`document.querySelector('.view-title-input').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))`);
+    check('rename a project', await waitFor(`(${'[...document.querySelectorAll(".sidebar .nav-label")]'}).some(e => e.textContent === 'Spring Demos')`));
+    check('next number skips renamed projects', await waitFor(`document.querySelector('.add-project .nav-sub').textContent === 'Next: Collection 002'`));
+    // delete it (confirmation stubbed)
+    const realMessageBox = dialog.showMessageBox;
+    dialog.showMessageBox = async () => ({ response: 0 });
+    await js(`document.querySelector('.action-row [aria-label="Delete project"]').click()`);
+    check('delete a project', await waitFor(`!(${'[...document.querySelectorAll(".sidebar .nav-label")]'}).some(e => e.textContent === 'Spring Demos')`));
+    dialog.showMessageBox = realMessageBox;
+    // drag a piece onto Collection 001 in the sidebar
     cmd('navigate', { view: 'oeuvre' });
     await waitFor(`!!document.querySelector('.tracklist .tl-row:not(.tl-head)')`);
-    const pd = await js(`(() => {
+    const sidebarTarget = (label) => js(`(() => {
       const row = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')].find(r => r.textContent.includes('Night Window')).getBoundingClientRect();
-      const item = [...document.querySelectorAll('.nav-item')].find(n => n.textContent.includes('Project')).getBoundingClientRect();
-      return { from: { x: row.left + 300, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
+      const item = [...document.querySelectorAll('.setlist-item')].find(n => n.textContent.includes(${JSON.stringify(label)})).getBoundingClientRect();
+      return { from: { x: row.left + 120, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
     })()`);
-    await nativeDrag(w, pd.from, pd.to);
-    check('dragging a piece onto Project adds it', await (async () => { await sleep(500); return collections.data.project.length === 1; })());
-    collections.listAdd('project', ['Tapping Etude No. 10', 'Tapping Etude No. 2', 'Harmonic Field'].map(byTitle));
-    check('Project is separate from Portfolio', collections.data.portfolio.length === 5 && collections.data.project.length === 4);
-    cmd('navigate', { view: 'project' });
-    check('Project shows 4, newest first', await waitFor(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|') === 'Tapping Etude No. 10|Tapping Etude No. 2|Night Window|Harmonic Field'`));
-    check('Project header says it exports WAV', await js(`document.querySelector('.view-meta').textContent.includes('Exports WAV')`));
+    await nativeDrag(w, ...Object.values(await sidebarTarget('Collection 001')));
+    const proj1 = () => collections.data.projects.find((p) => p.name === 'Collection 001');
+    check('dragging a piece onto a project adds it', await (async () => { await sleep(500); return proj1()?.items.length === 1; })());
+    // drag onto "Add Project" starts a new project with that piece
+    await nativeDrag(w, ...Object.values(await sidebarTarget('Add Project')));
+    check('dropping on Add Project creates Collection 002 with the piece', await (async () => {
+      await sleep(600);
+      const p2 = collections.data.projects.find((p) => p.name === 'Collection 002');
+      return p2?.items.length === 1;
+    })());
+    collections.projectAdd(proj1().id, ['Tapping Etude No. 10', 'Tapping Etude No. 2', 'Harmonic Field'].map(byTitle));
+    check('projects are separate from Portfolio', collections.data.portfolio.length === 5 && proj1().items.length === 4);
+    cmd('navigate', { view: 'project', id: proj1().id });
+    check('project lists its pieces newest first', await waitFor(`[...document.querySelectorAll('.tl-title')].map(e => e.textContent).join('|') === 'Tapping Etude No. 10|Tapping Etude No. 2|Night Window|Harmonic Field'`));
+    check('project header says it exports WAV', await js(`document.querySelector('.view-meta').textContent.includes('Exports WAV')`));
     await js(`document.querySelector('.sort-toggle').click()`);
-    check('Project flips independently', await waitFor(`document.querySelector('.tl-title').textContent === 'Harmonic Field'`) && state.data.ui?.listDescending?.portfolio !== false);
+    check('project flips independently of Portfolio', await waitFor(`document.querySelector('.tl-title').textContent === 'Harmonic Field'`) && state.data.ui?.listDescending?.portfolio !== false);
     await js(`document.querySelector('.sort-toggle').click()`);
     await js(`(() => { const rows = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')]; for (const t of ['Tapping Etude No. 10', 'Night Window', 'Tapping Etude No. 2']) rows.find(r => r.textContent.includes(t)).querySelector('.checkbox').click(); })()`);
     await sleep(200);
@@ -243,9 +272,11 @@ export async function run({ app, win, library, collections, updater, state }) {
     await shot('07b-project');
     const wavZip = path.join(out, 'Project export.zip');
     fs.rmSync(wavZip, { force: true });
-    dialog.showSaveDialog = async () => ({ canceled: false, filePath: wavZip });
+    let suggested = '';
+    dialog.showSaveDialog = async (_w, opts) => { suggested = path.basename(opts.defaultPath); return { canceled: false, filePath: wavZip }; };
     await js(`[...document.querySelectorAll('.export-group .pill-btn')][1].click()`);
     check('WAV export finishes', await waitFor(`!!document.querySelector('.export-summary')`, 20000));
+    check('ZIP is named after the project', /^Collection 001 \d{4}-\d{2}-\d{2}\.zip$/.test(suggested), suggested);
     check('summary counts WAVs', (await js(`document.querySelector('.export-summary strong').textContent`)) === '3 WAVs');
     await shot('08c-project-export-done');
     const wavListing = execFileSync('unzip', ['-l', wavZip]).toString();
@@ -292,8 +323,8 @@ export async function run({ app, win, library, collections, updater, state }) {
     await waitFor(`!!document.querySelector('.tracklist .tl-row:not(.tl-head)')`);
     const sp = await js(`(() => {
       const row = [...document.querySelectorAll('.tracklist .tl-row:not(.tl-head)')].find(r => r.textContent.includes('Night Window')).getBoundingClientRect();
-      const item = document.querySelector('.setlist-item').getBoundingClientRect();
-      return { from: { x: row.left + 300, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
+      const item = [...document.querySelectorAll('.setlist-item')].find(n => n.textContent.includes('Eddie')).getBoundingClientRect();
+      return { from: { x: row.left + 120, y: row.top + row.height / 2 }, to: { x: item.left + 80, y: item.top + item.height / 2 } };
     })()`);
     await nativeDrag(w, sp.from, sp.to);
     check('dragging a piece onto a setlist adds it', await waitFor(`document.querySelector('.setlist-item .nav-sub') && ${'true'}`) && (await (async () => { await sleep(400); return collections.data.setlists[0].items.length === 6; })()));

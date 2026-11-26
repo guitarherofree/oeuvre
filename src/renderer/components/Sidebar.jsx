@@ -4,8 +4,8 @@ import {
   route, navigate, collections, library, sourcesMenuOpen, invoke, dragging, piecesById, libraryPieces,
 } from '../lib/store.js';
 import { player } from '../lib/player.js';
-import { addToList, addToSetlist, promptNewSetlist, addSourceFolders } from '../lib/actions.js';
-import { fmtShowDate, plural } from '../lib/format.js';
+import { addToList, addToSetlist, promptNewSetlist, addSourceFolders, createProject, addToProject } from '../lib/actions.js';
+import { fmtShowDate, plural, nextProjectName } from '../lib/format.js';
 import { Logo, LogoMark, Mosaic, Checkbox } from './Common.jsx';
 
 const DRAG_TYPE = 'application/x-oeuvre-pieces';
@@ -113,6 +113,49 @@ export function SourcesMenu() {
   );
 }
 
+function ProjectsSection({ r, col, playingIn }) {
+  const projects = col.projects || [];
+  const next = nextProjectName(projects);
+  return (
+    <section class="library-section">
+      <div class="setlists-head">
+        <span class="setlists-title"><AudioWaveform size={18} /> Projects</span>
+        <button type="button" class="icon-btn round-btn" title={`Add Project (⇧⌘N): creates ${next}`} aria-label="Add Project" onClick={() => createProject()}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <div class="setlists-list">
+        <button type="button" class="setlist-item add-project" onClick={() => createProject()} title="Drop pieces here to start a project with them"
+          {...dropProps((ids) => createProject(ids))}>
+          <span class="add-tile"><Plus size={20} /></span>
+          <span class="nav-text">
+            <span class="nav-label">Add Project</span>
+            <span class="nav-sub">Next: {next}</span>
+          </span>
+        </button>
+        {projects.map((p) => {
+          const pieces = p.items.slice(0, 4).map((it) => piecesById.value.get(it.pieceId)).filter(Boolean);
+          return (
+            <button
+              type="button"
+              key={p.id}
+              class={`setlist-item ${r.view === 'project' && r.id === p.id ? 'is-active' : ''}`}
+              onClick={() => navigate({ view: 'project', id: p.id })}
+              {...dropProps((ids) => addToProject(p.id, ids))}
+            >
+              <Mosaic pieces={pieces} size={44} glyph={pieces.length < 4 ? <AudioWaveform size={20} /> : null} />
+              <span class="nav-text">
+                <span class={`nav-label ${playingIn('project', p.id) ? 'is-playing' : ''}`}>{p.name}</span>
+                <span class="nav-sub">{plural(p.items.length, 'piece')} · WAV</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function Sidebar() {
   const r = route.value;
   const col = collections.value;
@@ -142,59 +185,56 @@ export function Sidebar() {
           onClick={() => navigate({ view: 'portfolio' })}
           drop={(ids) => addToList('portfolio', ids)}
         />
-        <NavItem
-          active={r.view === 'project'}
-          icon={<span class="nav-glyph nav-glyph-project"><AudioWaveform size={16} /></span>}
-          label="Project"
-          sub={`${plural((col.project || []).length, 'piece')} · WAV`}
-          playing={playingIn('project')}
-          onClick={() => navigate({ view: 'project' })}
-          drop={(ids) => addToList('project', ids)}
-        />
         <SourcesMenu />
       </div>
 
       <div class="panel setlists-panel">
-        <div class="setlists-head">
-          <span class="setlists-title"><ListMusic size={18} /> Setlists</span>
-          <button type="button" class="icon-btn round-btn" title="New Setlist (⌘N)" aria-label="New Setlist" onClick={() => promptNewSetlist()}>
-            <Plus size={16} />
-          </button>
-        </div>
-        <div class="setlists-list" {...dropProps((ids) => promptNewSetlist(ids))}>
-          {col.setlists.length === 0 ? (
-            <div class="setlists-empty">
-              <p>Build a setlist for your next show.</p>
-              <button type="button" class="pill-btn" onClick={() => promptNewSetlist()}>New Setlist</button>
-            </div>
-          ) : null}
-          {col.setlists.map((s) => {
-            const pieces = s.items.slice(0, 4).map((it) => piecesById.value.get(it.pieceId)).filter(Boolean);
-            const sub = [fmtShowDate(s.date), s.venue].filter(Boolean).join(' · ') || plural(s.items.length, 'piece');
-            return (
-              <button
-                type="button"
-                key={s.id}
-                class={`setlist-item ${r.view === 'setlist' && r.id === s.id ? 'is-active' : ''}`}
-                onClick={() => navigate({ view: 'setlist', id: s.id })}
-                {...dropProps((ids) => addToSetlist(s.id, ids))}
-                onDrop={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.classList.remove('is-drop-target');
-                  const raw = e.dataTransfer.getData(DRAG_TYPE);
-                  if (!raw) return;
-                  e.preventDefault();
-                  addToSetlist(s.id, JSON.parse(raw).ids);
-                }}
-              >
-                <Mosaic pieces={pieces} size={44} />
-                <span class="nav-text">
-                  <span class={`nav-label ${playingIn('setlist', s.id) ? 'is-playing' : ''}`}>{s.name}</span>
-                  <span class="nav-sub">{sub}</span>
-                </span>
+        <div class="library-scroll">
+          <ProjectsSection r={r} col={col} playingIn={playingIn} />
+
+          <section class="library-section">
+            <div class="setlists-head">
+              <span class="setlists-title"><ListMusic size={18} /> Setlists</span>
+              <button type="button" class="icon-btn round-btn" title="New Setlist (⌘N)" aria-label="New Setlist" onClick={() => promptNewSetlist()}>
+                <Plus size={16} />
               </button>
-            );
-          })}
+            </div>
+            <div class="setlists-list" {...dropProps((ids) => promptNewSetlist(ids))}>
+              {col.setlists.length === 0 ? (
+                <div class="setlists-empty">
+                  <p>Build a setlist for your next show.</p>
+                  <button type="button" class="pill-btn" onClick={() => promptNewSetlist()}>New Setlist</button>
+                </div>
+              ) : null}
+              {col.setlists.map((s) => {
+                const pieces = s.items.slice(0, 4).map((it) => piecesById.value.get(it.pieceId)).filter(Boolean);
+                const sub = [fmtShowDate(s.date), s.venue].filter(Boolean).join(' · ') || plural(s.items.length, 'piece');
+                return (
+                  <button
+                    type="button"
+                    key={s.id}
+                    class={`setlist-item ${r.view === 'setlist' && r.id === s.id ? 'is-active' : ''}`}
+                    onClick={() => navigate({ view: 'setlist', id: s.id })}
+                    {...dropProps((ids) => addToSetlist(s.id, ids))}
+                    onDrop={(e) => {
+                      e.stopPropagation();
+                      e.currentTarget.classList.remove('is-drop-target');
+                      const raw = e.dataTransfer.getData(DRAG_TYPE);
+                      if (!raw) return;
+                      e.preventDefault();
+                      addToSetlist(s.id, JSON.parse(raw).ids);
+                    }}
+                  >
+                    <Mosaic pieces={pieces} size={44} />
+                    <span class="nav-text">
+                      <span class={`nav-label ${playingIn('setlist', s.id) ? 'is-playing' : ''}`}>{s.name}</span>
+                      <span class="nav-sub">{sub}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         </div>
       </div>
     </aside>

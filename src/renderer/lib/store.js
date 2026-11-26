@@ -19,12 +19,16 @@ export const toasts = signal([]);
 export const exportState = signal(null);
 export const updateStatus = signal(null);
 export const sourcesMenuOpen = signal(false);
-// Portfolio and Project: simple lists of pieces that differ only in their export format.
+// Portfolio is a single list that exports MP3. Projects are many lists that export WAV.
 export const LISTS = {
   portfolio: { name: 'portfolio', label: 'Portfolio', format: 'mp3', noun: 'work sample' },
-  project: { name: 'project', label: 'Project', format: 'wav', noun: 'piece' },
 };
-export const listDescending = signal({ portfolio: config.portfolio.sortDescending, project: config.project.sortDescending });
+// Sort direction per list: 'portfolio' or a project id. Missing ids use the config default.
+export const listDescending = signal({ portfolio: config.portfolio.sortDescending });
+export function isDescending(key) {
+  const v = listDescending.value[key];
+  return typeof v === 'boolean' ? v : (key === 'portfolio' ? config.portfolio.sortDescending : config.projects.sortDescending);
+}
 export const dragging = signal(null); // { ids, from }
 
 const back = signal([]);
@@ -43,6 +47,7 @@ export const listIds = computed(() => Object.fromEntries(
 ));
 export const portfolioIds = computed(() => listIds.value.portfolio);
 export const setlistsById = computed(() => new Map(collections.value.setlists.map((s) => [s.id, s])));
+export const projectsById = computed(() => new Map((collections.value.projects || []).map((p) => [p.id, p])));
 
 export function isAvailable(id) {
   const p = piecesById.value.get(id);
@@ -78,7 +83,7 @@ export function filterPieces(list, q) {
 }
 
 export function viewKey(r = route.value) {
-  return r.view === 'setlist' ? `setlist:${r.id}` : r.view;
+  return r.view === 'setlist' || r.view === 'project' ? `${r.view}:${r.id}` : r.view;
 }
 
 export function setFilter(key, text) {

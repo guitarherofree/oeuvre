@@ -57,6 +57,13 @@ export function formatDetail(p) {
   return parts.join(' · ');
 }
 
+/** Matches nextProjectName in the main process: one past the highest "Collection NNN". */
+export function nextProjectName(projects) {
+  const nums = (projects || []).map((p) => /^collection\s+0*(\d+)$/i.exec(String(p.name || '').trim())).filter(Boolean).map((m) => parseInt(m[1], 10));
+  const n = nums.length ? Math.max(...nums) + 1 : 1;
+  return `Collection ${String(n).padStart(3, '0')}`;
+}
+
 export function fmtBytes(n) {
   if (!n) return '';
   const u = ['B', 'KB', 'MB', 'GB'];

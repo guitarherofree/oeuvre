@@ -183,21 +183,64 @@ test('Project export: WAV copied as-is, lossless keeps depth and rate, lossy dec
   lib.close();
 });
 
-test('Project list is separate from Portfolio and survives relinking', () => {
+test('Projects: Collection 001, 002… numbered after the highest existing one', async () => {
+  const { nextProjectName } = await import('../src/main/collections.mjs');
+  const named = (...names) => names.map((name) => ({ name }));
+  assert.equal(nextProjectName([]), 'Collection 001');
+  assert.equal(nextProjectName(named('Collection 001', 'Collection 002')), 'Collection 003');
+  assert.equal(nextProjectName(named('Collection 001', 'Spring Demos')), 'Collection 002');
+  assert.equal(nextProjectName(named('Collection 009')), 'Collection 010');
+  assert.equal(nextProjectName(named('Collection 999')), 'Collection 1000');
+  assert.equal(nextProjectName(named('My Collection 5')), 'Collection 001');
+  // The renderer's copy (shown as "Next: …" in the sidebar) agrees.
+  const { nextProjectName: shown } = await import('../src/renderer/lib/format.js');
+  for (const list of [[], named('Collection 001', 'Spring Demos'), named('Collection 041', 'Collection 007')]) {
+    assert.equal(shown(list), nextProjectName(list));
+  }
+});
+
+test('Projects: create, add, remove, rename, delete, relink', () => {
   const dir = tmp();
   const col = new Collections({ file: path.join(dir, 'collections.json'), scoresDir: path.join(dir, 'scores') });
   const a = { id: 'p_a', title: 'A', path: '/a.wav' };
   const b = { id: 'p_b', title: 'B', path: '/b.wav' };
-  assert.equal(col.listAdd('project', [a, b]), 2);
-  assert.equal(col.listAdd('project', [a]), 0);
-  assert.equal(col.data.portfolio.length, 0);
-  assert.ok(col.listHas('project', 'p_b'));
+  const p1 = col.projectCreate();
+  const p2 = col.projectCreate({ pieces: [a] });
+  assert.equal(p1.name, 'Collection 001');
+  assert.equal(p2.name, 'Collection 002');
+  assert.equal(col.projectAdd(p1.id, [a, b]), 2);
+  assert.equal(col.projectAdd(p1.id, [a]), 0);
+  assert.ok(col.projectHasAll(p1.id, ['p_a', 'p_b']));
+  assert.ok(!col.projectHasAll(p2.id, ['p_a', 'p_b']));
+  assert.equal(col.data.portfolio.length, 0, 'projects are separate from Portfolio');
   col.relink({ p_b: 'p_c' });
-  assert.deepEqual(col.data.project.map((e) => e.pieceId), ['p_a', 'p_c']);
-  assert.equal(col.listRemove('project', ['p_a']), 1);
-  assert.throws(() => col.listAdd('nope', [a]));
+  assert.deepEqual(col.data.projects[0].items.map((e) => e.pieceId), ['p_a', 'p_c']);
+  assert.equal(col.projectRemove(p1.id, ['p_a']), 1);
+  col.projectRename(p2.id, 'Spring Demos');
+  assert.equal(col.projectCreate().name, 'Collection 002');
+  col.projectDelete(p1.id);
+  assert.deepEqual(col.data.projects.map((p) => p.name), ['Spring Demos', 'Collection 002']);
   col.close();
   const again = new Collections({ file: path.join(dir, 'collections.json'), scoresDir: path.join(dir, 'scores') });
-  assert.deepEqual(again.data.project.map((e) => e.pieceId), ['p_c']);
+  assert.deepEqual(again.data.projects.map((p) => p.name), ['Spring Demos', 'Collection 002']);
   again.close();
+});
+
+test('1.2.0 Project tab moves into Collection 001', () => {
+  const dir = tmp();
+  const file = path.join(dir, 'collections.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, portfolio: [{ pieceId: 'p_x' }], project: [{ pieceId: 'p_a', addedAt: 1 }, { pieceId: 'p_b', addedAt: 2 }], setlists: [], scores: {}, refs: {} }));
+  const col = new Collections({ file, scoresDir: path.join(dir, 'scores') });
+  assert.equal(col.data.project, undefined);
+  assert.equal(col.data.projects.length, 1);
+  assert.equal(col.data.projects[0].name, 'Collection 001');
+  assert.deepEqual(col.data.projects[0].items.map((e) => e.pieceId), ['p_a', 'p_b']);
+  assert.deepEqual(col.data.portfolio.map((e) => e.pieceId), ['p_x']);
+  col.close();
+  // An empty 1.2.0 Project tab doesn't create a collection.
+  const file2 = path.join(dir, 'c2.json');
+  fs.writeFileSync(file2, JSON.stringify({ version: 1, portfolio: [], project: [], setlists: [] }));
+  const col2 = new Collections({ file: file2, scoresDir: path.join(dir, 'scores') });
+  assert.equal(col2.data.projects.length, 0);
+  col2.close();
 });

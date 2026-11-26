@@ -2,6 +2,14 @@
 
 Each `## <version>` section becomes the release notes Oeuvre shows in **Check for Updates…**.
 
+## 1.3.0
+
+- The single Project tab is replaced by **Projects**: choose **Add Project** in the sidebar (or ⇧⌘N) to make as many collections as you like.
+  - New projects are named **Collection 001**, **Collection 002**, …, one past the highest existing number. Click a project's name to rename it.
+  - Each project works like Portfolio and exports **WAV** (individual files or a ZIP named after the project).
+  - Add pieces by right-clicking › **Add to Project** (a check mark shows which projects already have them), by dragging them onto a project in the sidebar, or by dropping them on **Add Project** to start a new one.
+- Anything you had in the old Project tab is now **Collection 001**.
+
 ## 1.2.0
 
 - New **Project** tab. It works like Portfolio: add pieces by right-clicking or dragging them onto Project in the sidebar, check pieces, flip newest/oldest first. It exports **WAV** files, individually or as one ZIP.

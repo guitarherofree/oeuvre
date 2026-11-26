@@ -33,8 +33,9 @@ const config = {
     sortDescending: true,
   },
 
-  project: {
-    // Same as Portfolio, but exports WAV files.
+  projects: {
+    // Projects work like Portfolio but export WAV files. New ones are named
+    // "Collection 001", "Collection 002", …, one past the highest existing number.
     sortDescending: true,
   },
 

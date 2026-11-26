@@ -3,12 +3,12 @@ import { ChevronLeft, ChevronRight, CircleArrowUp } from 'lucide-preact';
 import {
   api, invoke, ready, appInfo, library, collections, route, queueOpen, updateStatus, exportState, modal,
   navigate, goBack, goForward, canGoBack, canGoForward, setlistsById, sourcesMenuOpen, toast, scoresFor,
-  listDescending, LISTS,
+  listDescending, LISTS, projectsById,
 } from './lib/store.js';
 import {
   player, restore, togglePlay, next, previous, setVolume, toggleShuffle, setRepeat, cycleRepeat, pruneMissing,
 } from './lib/player.js';
-import { promptNewSetlist, playCurrentPage, openScore, checkForUpdates, exportPieces } from './lib/actions.js';
+import { promptNewSetlist, playCurrentPage, openScore, checkForUpdates, exportPieces, createProject } from './lib/actions.js';
 import { Sidebar } from './components/Sidebar.jsx';
 import { OeuvreView, ListView, SetlistView } from './components/Views.jsx';
 import { ScoreView } from './components/ScoreView.jsx';
@@ -46,6 +46,7 @@ function Main() {
       <TopBar />
       <div class="main-scroll" onScroll={onMainScroll}>
         {LISTS[r.view] ? <ListView name={r.view} key={r.view} />
+          : r.view === 'project' ? <ListView name="project" id={r.id} key={`project:${r.id}`} />
           : r.view === 'setlist' ? <SetlistView id={r.id} key={r.id} />
             : <OeuvreView />}
       </div>
@@ -83,6 +84,7 @@ function runCommand(cmd, arg) {
     case 'cycleRepeat': cycleRepeat(); break;
     case 'navigate': navigate(arg); break;
     case 'newSetlist': promptNewSetlist(); break;
+    case 'newProject': createProject(); break;
     case 'toggleQueue': queueOpen.value = !queueOpen.value; break;
     case 'checkUpdates': checkForUpdates(); break;
     case 'focusSearch': {
@@ -104,10 +106,17 @@ function runCommand(cmd, arg) {
       break;
     }
     case 'exportCollection': {
-      navigate({ view: arg.name });
-      const ids = collections.value[arg.name].map((e) => e.pieceId);
-      if (!ids.length) toast(`Your ${LISTS[arg.name].label} is empty.`);
-      else exportPieces(ids, arg.mode, arg.name);
+      if (arg.name === 'project') {
+        const p = route.value.view === 'project' ? projectsById.value.get(route.value.id) : null;
+        if (!p) { toast('Open a project first, then export it.'); break; }
+        if (!p.items.length) { toast(`${p.name} is empty.`); break; }
+        exportPieces(p.items.map((e) => e.pieceId), arg.mode, { label: p.name, format: 'wav' });
+        break;
+      }
+      navigate({ view: 'portfolio' });
+      const ids = collections.value.portfolio.map((e) => e.pieceId);
+      if (!ids.length) toast('Your Portfolio is empty.');
+      else exportPieces(ids, arg.mode, { label: 'Portfolio', format: 'mp3' });
       break;
     }
     default:
@@ -162,12 +171,17 @@ async function boot() {
   updateStatus.value = init.updateStatus;
   if (init.ui?.route) {
     const r = init.ui.route;
-    if (r.view !== 'setlist' || init.collections.setlists.some((s) => s.id === r.id)) route.value = r;
+    const exists = r.view === 'setlist' ? init.collections.setlists.some((s) => s.id === r.id)
+      : r.view === 'project' ? (init.collections.projects || []).some((p) => p.id === r.id)
+        : ['oeuvre', 'portfolio'].includes(r.view);
+    if (exists) route.value = r;
   }
   queueOpen.value = !!init.ui?.queueOpen;
   const savedOrder = { ...(init.ui?.listDescending || {}) };
   if (typeof init.ui?.portfolioDescending === 'boolean') savedOrder.portfolio ??= init.ui.portfolioDescending; // 1.1.0
-  for (const name of Object.keys(LISTS)) if (typeof savedOrder[name] === 'boolean') listDescending.value = { ...listDescending.value, [name]: savedOrder[name] };
+  const order = {};
+  for (const [k, v] of Object.entries(savedOrder)) if (typeof v === 'boolean') order[k] = v;
+  listDescending.value = { ...listDescending.value, ...order };
   restore(init.player);
   document.documentElement.dataset.platform = init.platform;
 

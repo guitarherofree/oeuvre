@@ -183,9 +183,18 @@ html:not([data-platform="darwin"]) .sidebar-top { padding-left: 12px; }
 .source-remove:hover { background: var(--danger); color: #000; }
 
 .setlists-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.library-scroll { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 8px; }
+.library-section + .library-section { border-top: 1px solid var(--border); margin-top: 6px; }
+.add-tile {
+  display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 6px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.28); color: var(--text-muted);
+}
+.add-project:hover .add-tile { border-color: var(--accent); color: var(--accent); }
+.add-project .nav-label { color: var(--text-muted); }
+.add-project:hover .nav-label { color: var(--text); }
 .setlists-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 12px 8px 16px; }
 .setlists-title { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--text-muted); font-size: 15px; }
-.setlists-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; border-radius: 6px; }
+.setlists-list { padding: 0 8px 8px; border-radius: 6px; }
 .setlists-list.is-drop-target { box-shadow: inset 0 0 0 2px var(--accent); }
 .setlists-empty { margin: 8px; padding: 16px; border-radius: 8px; background: var(--panel-raised); }
 .setlists-empty p { margin: 0 0 12px; font-weight: 600; }
