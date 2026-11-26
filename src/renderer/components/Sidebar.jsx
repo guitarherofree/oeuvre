@@ -6,7 +6,7 @@ import {
 import { player } from '../lib/player.js';
 import { addToList, addToSetlist, promptNewSetlist, addSourceFolders, createProject, addToProject } from '../lib/actions.js';
 import { fmtShowDate, plural, nextProjectName } from '../lib/format.js';
-import { Logo, LogoMark, Mosaic, Checkbox } from './Common.jsx';
+import { Logo, LogoMark, Mosaic, Checkbox, Artwork } from './Common.jsx';
 
 const DRAG_TYPE = 'application/x-oeuvre-pieces';
 
@@ -143,7 +143,9 @@ function ProjectsSection({ r, col, playingIn }) {
               onClick={() => navigate({ view: 'project', id: p.id })}
               {...dropProps((ids) => addToProject(p.id, ids))}
             >
-              <Mosaic pieces={pieces} size={44} glyph={pieces.length < 4 ? <AudioWaveform size={20} /> : null} />
+              {p.artKey
+                ? <Artwork piece={{ id: p.id, title: p.name, artKey: p.artKey }} size={44} radius={6} class="mosaic" />
+                : <Mosaic pieces={pieces} size={44} glyph={pieces.length < 4 ? <AudioWaveform size={20} /> : null} />}
               <span class="nav-text">
                 <span class={`nav-label ${playingIn('project', p.id) ? 'is-playing' : ''}`}>{p.name}</span>
                 <span class="nav-sub">{plural(p.items.length, 'piece')} · WAV</span>

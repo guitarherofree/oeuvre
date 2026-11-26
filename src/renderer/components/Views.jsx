@@ -1,15 +1,15 @@
-import { useState, useRef, useEffect } from 'preact/hooks';
-import { Play, Pause, Shuffle, Search, X, Briefcase, Download, Archive, Plus, Trash2, FolderPlus, CalendarDays, MapPin, ListMusic, EyeOff, ArrowDownUp, AudioWaveform } from 'lucide-preact';
+import { useState, useRef, useEffect, useLayoutEffect } from 'preact/hooks';
+import { Play, Pause, Shuffle, Search, X, Briefcase, Download, Archive, Plus, Trash2, FolderPlus, CalendarDays, MapPin, ListMusic, EyeOff, ArrowDownUp, AudioWaveform, ImagePlus } from 'lucide-preact';
 import {
   library, libraryPieces, filters, setFilter, collections, setlistsById, pieceOrRef, invoke,
-  filterPieces, modal, route, navigate, selection, listDescending, saveUi, LISTS, projectsById, isDescending,
+  filterPieces, modal, route, navigate, selection, listDescending, saveUi, LISTS, projectsById, isDescending, api, toast,
 } from '../lib/store.js';
 import config from '../../config.mjs';
 import { player, playContext, togglePlay } from '../lib/player.js';
 import { sortByTitle, fmtTotal, fmtShowDate, plural } from '../lib/format.js';
 import { addSourceFolders, addToSetlist, addToList, exportPieces, removeFromList, addToProject, removeFromProject } from '../lib/actions.js';
 import { TrackList } from './TrackList.jsx';
-import { LogoMark, Mosaic } from './Common.jsx';
+import { LogoMark, Mosaic, Artwork } from './Common.jsx';
 
 // ---------------------------------------------------------------- shared pieces
 
@@ -167,6 +167,96 @@ export function OeuvreView() {
 
 // ---------------------------------------------------------------- Portfolio and projects
 
+/** The square at the top of a collection: click to choose artwork, or drop an image on it. */
+function CollectionArt({ project, pieces }) {
+  const [over, setOver] = useState(false);
+  const report = (r) => { if (r?.error) toast(r.error); };
+  const choose = async () => report(await invoke('project:chooseArtwork', project.id));
+  const onDrop = async (e) => {
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setOver(false);
+    report(await invoke('project:setArtworkFile', project.id, api.pathForFile(file)));
+  };
+  return (
+    <div
+      class={`art-editor ${over ? 'is-over' : ''}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); e.stopPropagation(); setOver(true); } }}
+      onDragLeave={() => setOver(false)}
+      onDrop={onDrop}
+    >
+      <button type="button" class="art-editor-button" onClick={choose} title="Choose artwork, or drop an image here">
+        {project.artKey
+          ? <Artwork piece={{ id: project.id, title: project.name, artKey: project.artKey }} size={200} radius={6} class="mosaic" />
+          : <Mosaic pieces={pieces} size={200} glyph={pieces.length < 4 ? <AudioWaveform size={84} strokeWidth={1.5} /> : null} />}
+        <span class="art-editor-overlay">
+          <ImagePlus size={40} strokeWidth={1.5} />
+          <span>{project.artKey ? 'Change artwork' : 'Choose artwork'}</span>
+        </span>
+      </button>
+      {project.artKey ? (
+        <button type="button" class="art-editor-remove" title="Remove artwork" aria-label="Remove artwork"
+          onClick={() => invoke('project:removeArtwork', project.id)}>
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** A multi-line field that grows with its text and saves as you type. */
+function NotesField({ label, value, placeholder, onSave }) {
+  const [draft, setDraft] = useState(value || '');
+  const ref = useRef(null);
+  const timer = useRef(null);
+  useEffect(() => { if (document.activeElement !== ref.current) setDraft(value || ''); }, [value]);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [draft]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const save = (v) => {
+    clearTimeout(timer.current);
+    if (v !== (value || '')) onSave(v);
+  };
+  return (
+    <label class="notes-field">
+      <span class="notes-label">{label}</span>
+      <textarea
+        ref={ref}
+        rows={3}
+        value={draft}
+        placeholder={placeholder}
+        spellcheck
+        onInput={(e) => {
+          const v = e.currentTarget.value;
+          setDraft(v);
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => onSave(v), 700);
+        }}
+        onBlur={(e) => save(e.currentTarget.value)}
+      />
+    </label>
+  );
+}
+
+function CollectionNotes({ project }) {
+  const update = (patch) => invoke('project:update', project.id, patch);
+  return (
+    <section class="collection-notes">
+      <h2>About this collection</h2>
+      <NotesField label="Description" value={project.description} placeholder="What this collection is, where it's going, anything worth remembering."
+        onSave={(description) => update({ description })} />
+      <NotesField label="Credits" value={project.credits} placeholder={'Composition, performance, recording, mixing, mastering, artwork…\ne.g. Recorded by …, Mastered by …'}
+        onSave={(credits) => update({ credits })} />
+    </section>
+  );
+}
+
 /**
  * Portfolio (one list, exports MP3) and projects (many lists, export WAV) share this page.
  *   <ListView name="portfolio" />   or   <ListView name="project" id={projectId} />
@@ -228,7 +318,7 @@ export function ListView({ name, id }) {
         kind={isProject ? 'Project' : 'Collection'}
         title={label}
         titleEditor={isProject ? <EditableTitle value={project.name} onSave={(n) => invoke('project:rename', project.id, n)} /> : null}
-        art={<Mosaic pieces={pieces} size={200} glyph={pieces.length < 4 ? glyph : null} />}
+        art={isProject ? <CollectionArt project={project} pieces={pieces} /> : <Mosaic pieces={pieces} size={200} glyph={pieces.length < 4 ? glyph : null} />}
         meta={
           <>
             <span>{plural(pieces.length, isProject ? 'piece' : LISTS.portfolio.noun)}</span>
@@ -288,6 +378,7 @@ export function ListView({ name, id }) {
             )
         }
       />
+      {isProject ? <CollectionNotes key={project.id} project={project} /> : null}
     </div>
   );
 }

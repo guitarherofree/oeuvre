@@ -233,6 +233,33 @@ html:not([data-platform="darwin"]) .sidebar-top { padding-left: 12px; }
   background: linear-gradient(180deg, var(--header-from), color-mix(in srgb, var(--header-from) 45%, var(--panel)));
 }
 .view-header-art { flex: none; }
+.art-editor { position: relative; width: 200px; height: 200px; border-radius: 6px; }
+.art-editor-button { display: block; position: relative; padding: 0; border: 0; background: none; border-radius: 6px; }
+.art-editor-overlay {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  border-radius: 6px; background: rgba(0, 0, 0, 0.62); color: var(--text); font-size: 14px; font-weight: 600; opacity: 0;
+  transition: opacity 0.15s;
+}
+.art-editor-button:hover .art-editor-overlay, .art-editor.is-over .art-editor-overlay { opacity: 1; }
+.art-editor.is-over { box-shadow: 0 0 0 3px var(--accent); }
+.art-editor-remove {
+  position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.7); color: var(--text); opacity: 0; transition: opacity 0.15s;
+}
+.art-editor:hover .art-editor-remove { opacity: 1; }
+.art-editor-remove:hover { background: var(--danger); color: #000; }
+
+.collection-notes { max-width: 860px; padding: 8px 36px 56px; display: flex; flex-direction: column; gap: 18px; }
+.collection-notes h2 { margin: 16px 0 0; font-size: 20px; letter-spacing: -0.01em; }
+.notes-field { display: flex; flex-direction: column; gap: 8px; }
+.notes-label { font-size: 13px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.notes-field textarea {
+  min-height: 84px; padding: 12px 14px; resize: none; overflow: hidden; border: 1px solid transparent; border-radius: 8px;
+  background: var(--panel-raised); color: var(--text); font: 15px/1.55 var(--font); outline: none; user-select: text;
+}
+.notes-field textarea::placeholder { color: var(--text-faint); white-space: pre-line; }
+.notes-field textarea:hover { background: color-mix(in srgb, var(--panel-raised) 70%, var(--panel-high)); }
+.notes-field textarea:focus { border-color: var(--accent); background: var(--panel-raised); }
 .view-header-art .mosaic { width: 200px; height: 200px; }
 .view-header-text { min-width: 0; flex: 1; }
 .view-kind { font-size: 13px; font-weight: 600; }

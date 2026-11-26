@@ -7,6 +7,7 @@ const INVOKE = new Set([
   'piece:reveal', 'piece:contextMenu',
   'collection:add', 'collection:remove',
   'project:create', 'project:rename', 'project:add', 'project:remove', 'project:delete',
+  'project:update', 'project:chooseArtwork', 'project:setArtworkFile', 'project:removeArtwork',
   'setlist:create', 'setlist:update', 'setlist:delete', 'setlist:add', 'setlist:removeItems', 'setlist:reorder',
   'score:attach', 'score:attachFiles', 'score:read', 'score:open', 'score:remove', 'score:rename', 'score:reorder',
   'export:start', 'export:cancel', 'export:reveal',

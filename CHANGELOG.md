@@ -2,6 +2,11 @@
 
 Each `## <version>` section becomes the release notes Oeuvre shows in **Check for Updates…**.
 
+## 1.4.0
+
+- **Collection artwork**: click the square at the top of a project (or drop an image on it) to give the collection its own artwork. PNG, JPEG, HEIC and other common image types work. The artwork also appears in the sidebar; hover the square and click × to remove it.
+- **Description** and **Credits**: an *About this collection* section at the bottom of each project, saved as you type.
+
 ## 1.3.0
 
 - The single Project tab is replaced by **Projects**: choose **Add Project** in the sidebar (or ⇧⌘N) to make as many collections as you like.

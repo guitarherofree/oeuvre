@@ -284,6 +284,43 @@ export async function run({ app, win, library, collections, updater, state }) {
     await js(`document.querySelector('.dialog .primary-btn').click()`);
     await sleep(200);
 
+    // Collection artwork, description and credits
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path.join(fixtures, 'cover-src.png')] });
+    await js(`document.querySelector('.art-editor-button').click()`);
+    check('choose artwork for a collection', await waitFor(`document.querySelector('.art-editor img')?.src.startsWith('oeuvre-art://') && document.querySelector('.art-editor img').naturalWidth > 0`));
+    check('sidebar tile shows the artwork', await waitFor(`[...document.querySelectorAll('.setlist-item')].find(n => n.textContent.includes('Collection 001'))?.querySelector('img')?.naturalWidth > 0`));
+    check('artwork key saved', /^[a-f0-9]{40}\.jpg$/.test(proj1().artKey || ''), proj1().artKey);
+    const typeInto = async (label, text) => {
+      await js(`(() => {
+        const t = [...document.querySelectorAll('.notes-field')].find(f => f.textContent.startsWith(${JSON.stringify(label)})).querySelector('textarea');
+        t.focus(); t.value = ${JSON.stringify(text)}; t.dispatchEvent(new Event('input', { bubbles: true }));
+      })()`);
+    };
+    await typeInto('Description', 'Studies for the winter recital.\nWorking order, still changing.');
+    await typeInto('Credits', 'Composed and performed by the artist\nRecorded at home');
+    await sleep(1000);
+    await js(`document.activeElement.blur()`);
+    check('description saved', proj1().description === 'Studies for the winter recital.\nWorking order, still changing.');
+    check('credits saved', proj1().credits === 'Composed and performed by the artist\nRecorded at home');
+    check('fields grow with their text', await js(`[...document.querySelectorAll('.notes-field textarea')].every(t => t.scrollHeight <= t.clientHeight + 4)`));
+    await js(`document.querySelector('.main-scroll').scrollTo(0, 0)`);
+    await sleep(300);
+    await shot('07c-collection-art');
+    await js(`document.querySelector('.main-scroll').scrollTo(0, 99999)`);
+    await sleep(300);
+    await shot('07d-collection-notes');
+    await js(`document.querySelector('.main-scroll').scrollTo(0, 0)`);
+    // leave and come back: the fields reload from storage
+    cmd('navigate', { view: 'portfolio' });
+    await waitFor(`document.querySelector('.view-title')?.textContent === 'Portfolio'`);
+    check('Portfolio has no collection fields', await js(`!document.querySelector('.collection-notes') && !document.querySelector('.art-editor')`));
+    cmd('navigate', { view: 'project', id: proj1().id });
+    check('fields reload when you return', await waitFor(`[...document.querySelectorAll('.notes-field textarea')].map(t => t.value).join('|') === ${JSON.stringify('Studies for the winter recital.\nWorking order, still changing.|Composed and performed by the artist\nRecorded at home')}`));
+    await js(`document.querySelector('.art-editor-remove').click()`);
+    check('remove artwork', await waitFor(`!document.querySelector('.art-editor-remove')`) && await (async () => { await sleep(300); return !proj1().artKey; })());
+    await js(`document.querySelector('.art-editor-button').click()`);
+    await waitFor(`document.querySelector('.art-editor img')?.src.startsWith('oeuvre-art://')`);
+
     // Setlist + scores
     const setlist = collections.setlistCreate({ name: 'Eddie\'s Attic — December' });
     collections.setlistUpdate(setlist.id, { date: '2026-12-12', venue: 'Eddie\'s Attic, Decatur' });

@@ -2,6 +2,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, screen } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import config from '../config.mjs';
@@ -52,6 +54,29 @@ function processArt(buf) {
   const out = width > 640 ? img.resize({ width: 640, quality: 'best' }) : img;
   return { data: out.toJPEG(88), ext: 'jpg' };
 }
+
+/** Reads an image file (PNG, JPEG, HEIC, …) and stores a copy in the artwork cache. Returns its key. */
+async function importArtwork(file) {
+  let img = nativeImage.createFromPath(file);
+  if (img.isEmpty() && process.platform === 'darwin') {
+    // Formats nativeImage can't decode (e.g. some HEIC) go through macOS's own converter.
+    const tmp = path.join(app.getPath('temp'), `oeuvre-art-${Date.now()}.jpg`);
+    try {
+      await new Promise((resolve, reject) => execFile('/usr/bin/sips', ['-s', 'format', 'jpeg', file, '--out', tmp], (err) => (err ? reject(err) : resolve())));
+      img = nativeImage.createFromPath(tmp);
+    } catch {} finally { fs.rmSync(tmp, { force: true }); }
+  }
+  if (img.isEmpty()) throw new Error('Oeuvre couldn\'t read that image. Try a PNG or JPEG.');
+  const { width, height } = img.getSize();
+  const max = 1400;
+  const out = Math.max(width, height) > max ? img.resize(width >= height ? { width: max, quality: 'best' } : { height: max, quality: 'best' }) : img;
+  const data = out.toJPEG(90);
+  const key = `${crypto.createHash('sha1').update(data).digest('hex')}.jpg`;
+  fs.writeFileSync(path.join(library.artDir, key), data);
+  return key;
+}
+
+const ART_EXTENSIONS = ['png', 'jpg', 'jpeg', 'heic', 'heif', 'webp', 'gif', 'tif', 'tiff', 'bmp'];
 
 // ---------------------------------------------------------------- menu actions
 
@@ -254,6 +279,37 @@ function registerIpc() {
   handle('collection:remove', (name, ids) => collections.listRemove(name, ids));
   handle('project:create', ({ name, pieceIds } = {}) => collections.projectCreate({ name, pieces: piecesOrRefs(pieceIds) }));
   handle('project:rename', (id, name) => collections.projectRename(id, name));
+  handle('project:update', (id, patch) => {
+    const safe = {};
+    for (const key of ['name', 'description', 'credits']) if (patch && key in patch) safe[key] = patch[key];
+    return collections.projectUpdate(id, safe);
+  });
+  handle('project:chooseArtwork', async (id) => {
+    const p = collections.data.projects.find((x) => x.id === id);
+    if (!p) return null;
+    const res = await dialog.showOpenDialog(win, {
+      title: `Artwork for “${p.name}”`,
+      buttonLabel: 'Choose',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ART_EXTENSIONS }],
+    });
+    if (res.canceled || !res.filePaths.length) return null;
+    try {
+      return collections.projectUpdate(id, { artKey: await importArtwork(res.filePaths[0]) });
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+  handle('project:setArtworkFile', async (id, file) => {
+    if (typeof file !== 'string' || !fs.existsSync(file) || !fs.statSync(file).isFile()) return { error: 'That isn\'t a file.' };
+    if (!ART_EXTENSIONS.includes(path.extname(file).slice(1).toLowerCase())) return { error: 'Drop an image file (PNG, JPEG, HEIC…).' };
+    try {
+      return collections.projectUpdate(id, { artKey: await importArtwork(file) });
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+  handle('project:removeArtwork', (id) => collections.projectUpdate(id, { artKey: null }));
   handle('project:add', (id, ids) => collections.projectAdd(id, piecesOrRefs(ids)));
   handle('project:remove', (id, ids) => collections.projectRemove(id, ids));
   handle('project:delete', async (id) => {

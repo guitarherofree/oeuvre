@@ -138,6 +138,18 @@ export class Collections extends EventEmitter {
     return p;
   }
 
+  /** Name, description, credits and artwork (a key in the artwork cache, or null). */
+  projectUpdate(id, patch = {}) {
+    const p = this.#project(id);
+    if ('name' in patch) p.name = String(patch.name || '').trim() || p.name;
+    for (const key of ['description', 'credits']) {
+      if (key in patch) p[key] = String(patch[key] ?? '').slice(0, 20000);
+    }
+    if ('artKey' in patch) p.artKey = patch.artKey || null;
+    this.#changed();
+    return p;
+  }
+
   projectDelete(id) {
     this.data.projects = this.data.projects.filter((p) => p.id !== id);
     this.#changed();
